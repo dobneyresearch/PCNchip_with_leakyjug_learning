@@ -284,7 +284,7 @@ included here.
 
 ## Citation
 
-Part I of this study presents the analog cell and its unsupervised learning; this repository
+Part I of this study https://github.com/dobneyresearch/PredictiveCodingNetworks_AnalogVLSIdesign presents the analog cell and its unsupervised learning; this repository
 accompanies Part II. See `paper/refs.bib`.
 
 Correspondence: `saul.dobney@dobney.com`
