@@ -58,19 +58,6 @@ break the import chain.
 | `main_stage2_v4.md` | editable prose twin in markdown |
 | `main_stage2_v3.tex` | figure/equation source; `build_v4.py` splices the TikZ figures and numbered equations from here so numbering stays correct |
 | `refs.bib` | bibliography |
-| `build_v4.py` | assembles `v4.tex` from `v4.md` (prose) + `v3.tex` (figures, equations, preamble) |
-| `mkmd.py` | regenerates the markdown twin from the `.tex` |
-
-Rebuild:
-
-```bash
-cd paper
-python3 build_v4.py          # writes main_stage2_v4.tex
-pdflatex main_stage2_v4 && bibtex main_stage2_v4
-pdflatex main_stage2_v4 && pdflatex main_stage2_v4
-```
-
-Requires `pandoc` (tested on 3.1.3) and a TeX distribution with `IEEEtran`.
 
 ### `multi_array_level3_BIGspec/` — the float rig (Table 1)
 
