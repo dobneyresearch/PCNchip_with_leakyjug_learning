@@ -55,7 +55,7 @@ break the import chain.
 |---|---|
 | `main_stage2_v4.pdf` | **the paper** |
 | `main_stage2_v4.tex` | LaTeX source of the PDF |
-| `main_stage2_v4.md` | editable prose twin — **edit this**, then rebuild |
+| `main_stage2_v4.md` | editable prose twin in markdown |
 | `main_stage2_v3.tex` | figure/equation source; `build_v4.py` splices the TikZ figures and numbered equations from here so numbering stays correct |
 | `refs.bib` | bibliography |
 | `build_v4.py` | assembles `v4.tex` from `v4.md` (prose) + `v3.tex` (figures, equations, preamble) |
