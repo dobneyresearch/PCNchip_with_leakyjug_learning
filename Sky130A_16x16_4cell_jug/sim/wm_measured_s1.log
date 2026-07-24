@@ -1,0 +1,38 @@
+  ** MEASURED W MAP ** ../circuit/output/w_map.csv
+     ★ WGT_ZERO RE-DERIVED: 132 -> 117  (a property of the CELL, and the cell changed)
+     dW/dcode: rails ~0.050 / 0.108   middle ~1.419   => 28x SENSITIVITY VARIATION
+     monotonic: True
+Loading EMNIST split-sign BIG L0 features ...
+  124,800 train / 20,800 test  (26 classes, 1152 split-sign feats)
+  Loaded L1 weights (24 chips x 3 pages, EMNIST per-chip PCA)
+  Loaded L2 weights (8 chips x 3 pages, EMNIST per-chip PCA)
+
+==============================================================================
+BIT-ACCURATE HARDWARE MODEL — BIG (24/8/16 chips)
+  activations : 8-bit ADC at EVERY layer
+  weight cell : 8-bit analog (CODE_MID=117) + 0 SUB-LSB bits
+                => 8-bit digital master, 1 master-LSB per write
+                => the analog cell moves 1 LSB every ~1 folds
+  delta       : 6-bit signed + power-of-2 AGC (a SHIFT)
+  E accum     : 20-bit saturating
+  velocity    : 12-bit,  mu = 1-2^-3 = 0.875
+  leaky       : alpha = 2^-3 = 0.125  (a SHIFT)
+  AGC ref     : rms
+  ADC gain    : per-layer shifts [3, 6, 6] (>>3, >>6, >>6)
+==============================================================================
+
+  ** LEAKY JUG **  E leaks (the leak IS momentum); a threshold crossing fires
+                   a whole +-1 cell-LSB.  frac_bits FORCED to 0:
+                   NO digital master, NO velocity register, NO per-synapse SRAM.
+     leak       : NONE (pure sigma-delta integrator — the CONTROL)
+     theta      : 8.0 x the per-fold rms of |E|  (per layer)
+  jug theta   : [2057, 8377, 7515]  (per layer, fixed at calibration)
+  ep 1  test=73.16%  (best 73.16%)  Esat= 0.0%  fire= 0.81%/fold  FROZEN= 71.4%  [162s]
+  ep 2  test=77.12%  (best 77.12%)  Esat= 0.0%  fire= 0.63%/fold  FROZEN= 60.3%  [317s]
+  ep 3  test=77.80%  (best 77.80%)  Esat= 0.0%  fire= 0.58%/fold  FROZEN= 52.6%  [474s]
+  ep 4  test=78.01%  (best 78.01%)  Esat= 0.0%  fire= 0.57%/fold  FROZEN= 46.2%  [622s]
+  ep 5  test=79.34%  (best 79.34%)  Esat= 0.0%  fire= 0.58%/fold  FROZEN= 40.7%  [760s]
+  ep 6  test=79.63%  (best 79.63%)  Esat= 0.0%  fire= 0.56%/fold  FROZEN= 36.5%  [892s]
+
+  >>> JUG theta=8.0 leak=pure act=8 e_fwd=0.0 agc=rms code=linear : BEST = 79.63%   (float spec on BIG = 82.50%)
+

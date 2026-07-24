@@ -1,0 +1,19 @@
+Loading EMNIST split-sign BIG L0 features ...
+  124,800 train / 20,800 test  (26 classes, 1152 split-sign feats)
+  Loaded L1 weights (24 chips x 3 pages, EMNIST per-chip PCA)
+  Loaded L2 weights (8 chips x 3 pages, EMNIST per-chip PCA)
+
+==============================================================================
+BIT-ACCURATE HARDWARE MODEL — BIG (24/8/16 chips)
+  *** FLOAT REFERENCE (control) ***
+==============================================================================
+
+  ep 1  test=73.44%  (best 73.44%)  [79s]
+  ep 2  test=77.26%  (best 77.26%)  [141s]
+  ep 3  test=79.34%  (best 79.34%)  [195s]
+  ep 4  test=80.62%  (best 80.62%)  [257s]
+  ep 5  test=81.24%  (best 81.24%)  [318s]
+  ep 6  test=82.07%  (best 82.07%)  [375s]
+
+  >>> FLOAT REF : BEST = 82.07%   (float spec on BIG = 82.50%)
+

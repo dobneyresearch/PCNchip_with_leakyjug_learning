@@ -1,0 +1,3 @@
+Loading EMNIST split-sign BIG L0 features ...
+  124,800 train / 20,800 test  (26 classes, 1152 split-sign feats)
+LINEAR (logreg) on BIG L0 (1152 split-sign): 77.14%  [167s]

@@ -1,0 +1,121 @@
+* =============================================================================
+* tb_jug_comparator — the TRANSISTOR-LEVEL window comparator (jug_comparator_t)
+*
+* This is the LAST and LEAST fussy block in the jug. The comparator is allowed to be wrong
+* 20% of the time (residue subtraction conserves charge — a wrong fire is undone by the next
+* right one), so we are NOT chasing mV-precise thresholds. We only need to confirm:
+*
+*   D1. fire_up rises as V_Ce crosses vth_hi (= 0.95 V), within a small fraction of theta.
+*   D2. fire_dn rises as V_Ce crosses vth_lo (= 0.85 V), within a small fraction of theta.
+*   D3. THE DEAD ZONE: inside the window (0.85 < V_Ce < 0.95) BOTH outputs are LOW, and the
+*       two never fire at once. (A cell at rest must not fire.)
+*   D4. SPEED: fire_up settles within the per-cell compare window (<~10 ns) — fast enough to
+*       sweep 1024 cells. (The one real constraint: it must keep up with the sweep.)
+*
+* PASS margin: offset within 0.5*theta = 25 mV of the ideal threshold is a PASS. The design
+* tolerates 2*theta (0.76pp), so 25 mV is an order of margin.
+*
+* Run:  ngspice -b tb_jug_comparator.spice
+* =============================================================================
+
+.title tb_jug_comparator  the transistor-level window comparator
+
+.include 'jug_compare.spice'
+.lib "/home/saul/.volare/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.tech/ngspice/sky130.lib.spice" tt
+
+.param VDD_val = 1.8
+.param VBIAS   = 0.9
+.param THETA   = 0.050
+
+Vvdd  vdd 0 DC {VDD_val}
+Vvss  vss 0 DC 0
+Vbias vbias  0 DC {VBIAS}
+Vthi  vth_hi 0 DC {VBIAS + THETA}     ; 0.95
+Vtlo  vth_lo 0 DC {VBIAS - THETA}     ; 0.85
+
+* The Ce node. DC value 0.90 (rest). The .dc sweep overrides this value for D1–D3; the PWL
+* drives the transient step for D4 (0.90 -> 1.00 V at 50 ns).
+Vce   ve 0 DC {VBIAS} PWL(0 {VBIAS}  49n {VBIAS}  50n 1.00  200n 1.00)
+
+Xcmp ve vbias vth_hi vth_lo fire_up fire_dn vdd vss jug_comparator_t
+
+.control
+  set noaskquit
+
+  echo "=============================================================================="
+  echo "  tb_jug_comparator — TRANSISTOR-LEVEL WINDOW COMPARATOR"
+  echo "=============================================================================="
+
+  * ── D1/D2/D3: DC sweep V_Ce across (and past) the window ─────────────────
+  dc Vce 0.75 1.05 0.0005
+
+  * digital-crossing of each output (trip at vdd/2 = 0.9 V)
+  meas dc up_thresh WHEN v(fire_up)=0.9 RISE=1
+  meas dc dn_thresh WHEN v(fire_dn)=0.9 FALL=1
+
+  let up_ideal = 0.95
+  let dn_ideal = 0.85
+  let up_off = up_thresh - up_ideal
+  let dn_off = dn_thresh - dn_ideal
+
+  echo " "
+  echo "D1 — fire_up threshold (ideal 0.950 V):"
+  print up_thresh up_off
+  echo "D2 — fire_dn threshold (ideal 0.850 V):"
+  print dn_thresh dn_off
+
+  * ── D3: the dead zone — at V_Ce = vbias (0.9), BOTH must be low ──────────
+  * read the outputs at the rest point from the swept data
+  meas dc up_rest FIND v(fire_up) WHEN v(ve)=0.90
+  meas dc dn_rest FIND v(fire_dn) WHEN v(ve)=0.90
+  echo " "
+  echo "D3 — DEAD ZONE at V_Ce = 0.90 (both must be ~0 V):"
+  print up_rest dn_rest
+
+  * PASS/FAIL summary for the DC tests
+  * ⚠ use the WORD operators lt/gt/and — ngspice's control shell treats bare '<' '>' as file
+  *   redirection, so `(x < 0.025)` tries to read a file named "0.025)". (Cost an hour once.)
+  let up_ok = (abs(up_off) lt 0.025)
+  let dn_ok = (abs(dn_off) lt 0.025)
+  let dz_ok = (up_rest lt 0.2) and (dn_rest lt 0.2)
+  echo " "
+  if up_ok eq 1
+    echo "  D1 PASS: fire_up threshold within 25 mV of ideal"
+  else
+    echo "  D1 *** FAIL: fire_up threshold off by > 25 mV"
+  end
+  if dn_ok eq 1
+    echo "  D2 PASS: fire_dn threshold within 25 mV of ideal"
+  else
+    echo "  D2 *** FAIL: fire_dn threshold off by > 25 mV"
+  end
+  if dz_ok eq 1
+    echo "  D3 PASS: dead zone clean — neither output fires at rest"
+  else
+    echo "  D3 *** FAIL: an output is high inside the window"
+  end
+
+  wrdata output/jug_cmp_dc.csv v(fire_up) v(fire_dn)
+
+  * ── D4: SPEED — the PWL steps V_Ce 0.90 -> 1.00 at 50 ns; measure delay ──
+  tran 20p 200n
+  echo " "
+  echo "D4 — SPEED: step V_Ce 0.90 -> 1.00 V at 50 ns, measure fire_up rise delay"
+
+  * measure the delay from the input crossing vth_hi to fire_up crossing 0.9
+  meas tran t_in  WHEN v(ve)=0.95 RISE=1
+  meas tran t_out WHEN v(fire_up)=0.9 RISE=1
+  let t_delay = t_out - t_in
+  print t_delay
+  let sp_ok = (t_delay lt 10e-9) and (t_delay gt 0)
+  if sp_ok eq 1
+    echo "  D4 PASS: propagation delay < 10 ns (keeps up with the sweep)"
+  else
+    echo "  D4 *** FAIL: too slow for the sweep rate (or measure failed)"
+  end
+
+  echo "=============================================================================="
+  quit
+.endc
+
+.end

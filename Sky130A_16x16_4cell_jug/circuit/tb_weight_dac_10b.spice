@@ -1,0 +1,43 @@
+* tb_weight_dac_10b — is the 10-bit R-2R ladder MONOTONIC and LINEAR?
+*
+* ⚠ THIS MATTERS. The LUT (rtl/wgt_lut.v) pre-distorts code -> V_w so the WEIGHT is uniform.
+*   That ONLY works if the DAC itself is a faithful LINEAR converter. A non-monotonic DAC would
+*   defeat the whole point — and would reintroduce, one level up, exactly the non-monotonicity we
+*   just removed from the CELL (THE_WEIGHT_IS_NOT_LINEAR.md).
+*
+* A single swept `code` voltage drives the ten bits through B-source bit-extractors, so this is a
+* proper .dc sweep over all 1024 codes.
+.title tb_weight_dac_10b
+.include 'weight_dac_10b.spice'
+
+Vvdd vdd 0 DC 1.8
+Vvss vss 0 DC 0
+Vref vref 0 DC 1.8
+
+* the code, swept 0..1023
+Vcode code 0 DC 0
+
+* bit extractors: b_k = 1.8 * bit k of code
+Bb9 b9 0 V = 1.8 * (floor(v(code)/512) - 2*floor(v(code)/1024))
+Bb8 b8 0 V = 1.8 * (floor(v(code)/256) - 2*floor(v(code)/512))
+Bb7 b7 0 V = 1.8 * (floor(v(code)/128) - 2*floor(v(code)/256))
+Bb6 b6 0 V = 1.8 * (floor(v(code)/64)  - 2*floor(v(code)/128))
+Bb5 b5 0 V = 1.8 * (floor(v(code)/32)  - 2*floor(v(code)/64))
+Bb4 b4 0 V = 1.8 * (floor(v(code)/16)  - 2*floor(v(code)/32))
+Bb3 b3 0 V = 1.8 * (floor(v(code)/8)   - 2*floor(v(code)/16))
+Bb2 b2 0 V = 1.8 * (floor(v(code)/4)   - 2*floor(v(code)/8))
+Bb1 b1 0 V = 1.8 * (floor(v(code)/2)   - 2*floor(v(code)/4))
+Bb0 b0 0 V = 1.8 * (v(code) - 2*floor(v(code)/2))
+
+Xdac vdd vss vref b9 b8 b7 b6 b5 b4 b3 b2 b1 b0 vdac_node weight_dac_10b
+Rload vdac_node 0 1e12
+
+.control
+  set noaskquit
+  set wr_vecnames
+  set wr_singlescale
+  dc Vcode 0 1023 1
+  wrdata output/dac10b.csv v(vdac_node)
+  quit
+.endc
+.end

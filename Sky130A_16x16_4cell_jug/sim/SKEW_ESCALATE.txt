@@ -1,0 +1,5 @@
+escalate skew: ep=3 ch=8000 seed=42  15:23
+skew=0 lag  : 72.43%
+skew=1 lag  : 72.43%
+skew=2 lag  : 71.00%
+done 15:40

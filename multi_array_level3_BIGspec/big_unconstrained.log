@@ -1,0 +1,141 @@
+
+========================================================================
+PCN 3-layer EMNIST — BIG topology + THE SPEC  [pcn_bigspec]
+  Architecture: 1152→384→128→256 (24/8/16 chips, OVERLAPPING L3 routing)→clf(26)
+  Stages: P5[E3+E2+E1]×8(c32k)
+  n_settle: 1  boss_h: variable  lr_slow: 1.0  e_clip: 100.0000  leaky_alpha: 0.1  BOSS_LR: 0.001
+  Ideas:  nlms=off  local_delta=off  clf_refresh=off  avg_bp=off  bp_ema=off  stage_patience=off  stage_rollback=ON
+========================================================================
+
+Loading EMNIST split-sign BIG L0 features ...
+  124,800 train / 20,800 test  (26 classes, 1152 split-sign feats)
+  Eval sets: 208 (8/class, reporting) + 1040 (40/class, stage decisions)
+Loading weights ...
+  Loaded L1 weights (24 chips x 3 pages, EMNIST per-chip PCA)
+  Loaded L2 weights (8 chips x 3 pages, EMNIST per-chip PCA)
+  L3 weights: 16 chips × 2 pages (random ortho, seed=2)
+
+Computing GHA baseline (W-only, no E updates) ...
+  GHA baseline (208-eval): 57.69%  [emnist gha-only ref: 64.03%]
+
+████████████████████████████████████████████████████████████████████████
+  STAGE 1/1  —  phase P5 (train E3+E2+E1; frozen: none)  ×8 epochs, chunk 32,000
+
+────────────────────────────────────────────────────────────────────────
+  S1 P5 epoch 1/8
+  Fitting classifier (124,800 samples) ... acc(tr)=60.4%
+  fold_mean: lr/128 per sample → |E|≤1.00e-03 per fold; momentum μ=0.9 → effective step ≈1.00e-02
+  [  216s] S1 P5 ep1  s      1/32000  acc(eval)=58.7%  moves=1  ETA 55353108s
+  [  246s] S1 P5 ep1  s   5742/32000  acc(eval)=49.5%  moves=5742  ETA 10731s
+  [  276s] S1 P5 ep1  s  11695/32000  acc(eval)=53.8%  moves=11695  ETA 5770s
+  [  306s] S1 P5 ep1  s  17703/32000  acc(eval)=59.1%  moves=17703  ETA 4122s
+  [  336s] S1 P5 ep1  s  23655/32000  acc(eval)=55.8%  moves=23655  ETA 3303s
+  [  366s] S1 P5 ep1  s  29719/32000  acc(eval)=59.1%  moves=29719  ETA 2789s
+  E vs W (S1 P5 ep1, pre-absorb):  L1 ||E||/||W||=0.000 cos=+0.000  |  L2 ||E||/||W||=0.000 cos=+0.000  |  L3 ||E||/||W||=0.000 cos=+0.000
+  Fitting epoch classifier ... acc(208)=72.60%  acc(1040)=72.79%
+  S1 P5 ep1 complete:  acc(208)=72.60%  acc(1040)=72.79%  moves=32000  [561.0s]
+
+────────────────────────────────────────────────────────────────────────
+  S1 P5 epoch 2/8
+  Fitting classifier (124,800 samples) ... acc(tr)=74.4%
+  [  731s] S1 P5 ep2  s      1/32000  acc(eval)=72.1%  moves=1  ETA 5119s
+  [  761s] S1 P5 ep2  s   4361/32000  acc(eval)=62.0%  moves=4361  ETA 4599s
+  [  791s] S1 P5 ep2  s   9652/32000  acc(eval)=60.6%  moves=9652  ETA 4072s
+  [  821s] S1 P5 ep2  s  12460/32000  acc(eval)=62.5%  moves=12460  ETA 3908s
+  [  851s] S1 P5 ep2  s  15362/32000  acc(eval)=65.9%  moves=15362  ETA 3750s
+  [  881s] S1 P5 ep2  s  18287/32000  acc(eval)=66.3%  moves=18287  ETA 3605s
+  [  911s] S1 P5 ep2  s  23505/32000  acc(eval)=64.9%  moves=23505  ETA 3292s
+  [  941s] S1 P5 ep2  s  29395/32000  acc(eval)=66.3%  moves=29395  ETA 2984s
+  E vs W (S1 P5 ep2, pre-absorb):  L1 ||E||/||W||=0.000 cos=+0.000  |  L2 ||E||/||W||=0.000 cos=+0.000  |  L3 ||E||/||W||=0.000 cos=+0.000
+  Fitting epoch classifier ... acc(208)=74.04%  acc(1040)=75.38%
+  S1 P5 ep2 complete:  acc(208)=74.04%  acc(1040)=75.38%  moves=32000  [1145.7s]
+
+────────────────────────────────────────────────────────────────────────
+  S1 P5 epoch 3/8
+  Fitting classifier (124,800 samples) ... acc(tr)=77.1%
+  [ 1293s] S1 P5 ep3  s      1/32000  acc(eval)=73.6%  moves=1  ETA 3878s
+  [ 1323s] S1 P5 ep3  s   6500/32000  acc(eval)=69.2%  moves=6500  ETA 3481s
+  [ 1353s] S1 P5 ep3  s  12829/32000  acc(eval)=67.8%  moves=12829  ETA 3155s
+  [ 1383s] S1 P5 ep3  s  19297/32000  acc(eval)=70.2%  moves=19297  ETA 2867s
+  [ 1413s] S1 P5 ep3  s  25825/32000  acc(eval)=69.2%  moves=25825  ETA 2614s
+  E vs W (S1 P5 ep3, pre-absorb):  L1 ||E||/||W||=0.000 cos=+0.000  |  L2 ||E||/||W||=0.000 cos=+0.000  |  L3 ||E||/||W||=0.000 cos=+0.000
+  Fitting epoch classifier ... acc(208)=73.08%  acc(1040)=76.44%
+  S1 P5 ep3 complete:  acc(208)=73.08%  acc(1040)=76.44%  moves=32000  [1547.3s]
+
+────────────────────────────────────────────────────────────────────────
+  S1 P5 epoch 4/8
+  Fitting classifier (124,800 samples) ... acc(tr)=78.4%
+  [ 1648s] S1 P5 ep4  s      1/32000  acc(eval)=73.1%  moves=1  ETA 2747s
+  [ 1678s] S1 P5 ep4  s   6778/32000  acc(eval)=68.3%  moves=6778  ETA 2502s
+  [ 1708s] S1 P5 ep4  s  13553/32000  acc(eval)=66.8%  moves=13553  ETA 2283s
+  [ 1738s] S1 P5 ep4  s  20310/32000  acc(eval)=68.8%  moves=20310  ETA 2088s
+  [ 1768s] S1 P5 ep4  s  27045/32000  acc(eval)=67.3%  moves=27045  ETA 1911s
+  E vs W (S1 P5 ep4, pre-absorb):  L1 ||E||/||W||=0.000 cos=+0.000  |  L2 ||E||/||W||=0.000 cos=+0.000  |  L3 ||E||/||W||=0.000 cos=+0.000
+  Fitting epoch classifier ... acc(208)=74.04%  acc(1040)=76.44%
+  S1 P5 ep4 complete:  acc(208)=74.04%  acc(1040)=76.44%  moves=32000  [1888.4s]
+
+────────────────────────────────────────────────────────────────────────
+  S1 P5 epoch 5/8
+  Fitting classifier (124,800 samples) ... acc(tr)=79.2%
+  [ 1985s] S1 P5 ep5  s      1/32000  acc(eval)=74.5%  moves=1  ETA 1985s
+  [ 2015s] S1 P5 ep5  s   6796/32000  acc(eval)=70.2%  moves=6796  ETA 1812s
+  [ 2045s] S1 P5 ep5  s  13492/32000  acc(eval)=66.3%  moves=13492  ETA 1655s
+  [ 2075s] S1 P5 ep5  s  20196/32000  acc(eval)=67.3%  moves=20196  ETA 1509s
+  [ 2105s] S1 P5 ep5  s  26868/32000  acc(eval)=71.6%  moves=26868  ETA 1374s
+  E vs W (S1 P5 ep5, pre-absorb):  L1 ||E||/||W||=0.000 cos=+0.000  |  L2 ||E||/||W||=0.000 cos=+0.000  |  L3 ||E||/||W||=0.000 cos=+0.000
+  Fitting epoch classifier ... acc(208)=71.63%  acc(1040)=75.96%
+  S1 P5 ep5 complete:  acc(208)=71.63%  acc(1040)=75.96%  moves=32000  [2224.5s]
+
+────────────────────────────────────────────────────────────────────────
+  S1 P5 epoch 6/8
+  Fitting classifier (124,800 samples) ... acc(tr)=79.5%
+  [ 2321s] S1 P5 ep6  s      1/32000  acc(eval)=71.6%  moves=1  ETA 1392s
+  [ 2351s] S1 P5 ep6  s   6838/32000  acc(eval)=69.7%  moves=6838  ETA 1256s
+  [ 2381s] S1 P5 ep6  s  13664/32000  acc(eval)=73.1%  moves=13664  ETA 1129s
+  [ 2411s] S1 P5 ep6  s  20445/32000  acc(eval)=73.1%  moves=20445  ETA 1009s
+  [ 2441s] S1 P5 ep6  s  27223/32000  acc(eval)=70.2%  moves=27223  ETA 897s
+  E vs W (S1 P5 ep6, pre-absorb):  L1 ||E||/||W||=0.000 cos=+0.000  |  L2 ||E||/||W||=0.000 cos=+0.000  |  L3 ||E||/||W||=0.000 cos=+0.000
+  Fitting epoch classifier ... acc(208)=75.48%  acc(1040)=76.15%
+  S1 P5 ep6 complete:  acc(208)=75.48%  acc(1040)=76.15%  moves=32000  [2564.2s]
+
+────────────────────────────────────────────────────────────────────────
+  S1 P5 epoch 7/8
+  Fitting classifier (124,800 samples) ... acc(tr)=80.4%
+  [ 2667s] S1 P5 ep7  s      1/32000  acc(eval)=75.5%  moves=1  ETA 889s
+  [ 2697s] S1 P5 ep7  s   6718/32000  acc(eval)=70.7%  moves=6718  ETA 778s
+  [ 2727s] S1 P5 ep7  s  13433/32000  acc(eval)=71.6%  moves=13433  ETA 671s
+  [ 2757s] S1 P5 ep7  s  20185/32000  acc(eval)=70.7%  moves=20185  ETA 569s
+  [ 2788s] S1 P5 ep7  s  26930/32000  acc(eval)=68.8%  moves=26930  ETA 472s
+  E vs W (S1 P5 ep7, pre-absorb):  L1 ||E||/||W||=0.000 cos=+0.000  |  L2 ||E||/||W||=0.000 cos=+0.000  |  L3 ||E||/||W||=0.000 cos=+0.000
+  Fitting epoch classifier ... acc(208)=75.48%  acc(1040)=77.21%
+  S1 P5 ep7 complete:  acc(208)=75.48%  acc(1040)=77.21%  moves=32000  [2909.0s]
+
+────────────────────────────────────────────────────────────────────────
+  S1 P5 epoch 8/8
+  Fitting classifier (124,800 samples) ... acc(tr)=81.3%
+  [ 3008s] S1 P5 ep8  s      1/32000  acc(eval)=75.5%  moves=1  ETA 430s
+  [ 3038s] S1 P5 ep8  s   6812/32000  acc(eval)=70.7%  moves=6812  ETA 332s
+  [ 3068s] S1 P5 ep8  s  13493/32000  acc(eval)=68.3%  moves=13493  ETA 239s
+  [ 3098s] S1 P5 ep8  s  20183/32000  acc(eval)=70.2%  moves=20183  ETA 150s
+  [ 3128s] S1 P5 ep8  s  26798/32000  acc(eval)=76.0%  moves=26798  ETA 65s
+  E vs W (S1 P5 ep8, pre-absorb):  L1 ||E||/||W||=0.000 cos=+0.000  |  L2 ||E||/||W||=0.000 cos=+0.000  |  L3 ||E||/||W||=0.000 cos=+0.000
+  Fitting epoch classifier ... acc(208)=76.92%  acc(1040)=77.69%
+  S1 P5 ep8 complete:  acc(208)=76.92%  acc(1040)=77.69%  moves=32000  [3237.4s]
+
+  STAGE 1 (P5) done — best 1040-eval 77.69% (ep8)  — E3+E2+E1 now frozen (unless re-opened by a later stage)
+
+  Final classifier (124,800 train, 20,800 test) ...
+
+========================================================================
+RESULTS: FABLE pooled-ideas sim  (P5×8(c32k))
+  Ideas:  nlms=off  local_delta=off  clf_refresh=off  avg_bp=off  bp_ema=off
+  EMNIST GHA-only baseline (ref)  : 64.03%
+  GHA baseline this run (208)     : 57.69%
+  After training (full test)      : 79.19%
+  Train acc (124,800 samples)   : 81.85%
+  Train–Test gap                  : +2.67 pp
+  Change from GHA baseline        : +21.50 pp
+  Wall time                       : 3324.5s
+========================================================================
+
+Log → /home/saul/NtntForClaude/PCNchip_clean/multi_array_level3_BIGspec/results/l3nrm_fable_sm_stg5x8_ns1_bhvar_lr1.0_rb_acc_log.txt

@@ -1,0 +1,51 @@
+* Does re-sizing MN3_w restore a MONOTONIC, correctly-signed weight?
+* Root cause: MN3_w (w=10) demands more current than the PMOS mirror (w=4) can supply
+* => ntail collapses => MN3_w in TRIODE => I_tail saturates => gm PEAKS and FALLS.
+* The weight (gm - gm_ref) therefore INVERTS above the peak.
+* Fix candidate: weaken MN3_w so it stays in saturation across the whole Vw range.
+.title sweep_mn3w
+.lib "/home/saul/.volare/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.tech/ngspice/sky130.lib.spice" tt
+.param WT = 10
+.param VCM_val = 0.9
+Vvdd vdd 0 DC 1.8
+Vvss vss 0 DC 0
+Vvw  vw  0 DC 0.927
+Vinn inn 0 DC {VCM_val}
+Vinp inp 0 DC {VCM_val}
+XMP1 nmp1 nmp1 vdd vdd sky130_fd_pr__pfet_01v8 w=4 l=0.7
+XMP2 iout nmp1 vdd vdd sky130_fd_pr__pfet_01v8 w=4 l=0.7
+XMN1 nmp1 inp ntail vss sky130_fd_pr__nfet_01v8 w=2 l=0.35
+XMN2 iout inn ntail vss sky130_fd_pr__nfet_01v8 w=2 l=0.35
+XMN3 ntail vw vss vss sky130_fd_pr__nfet_01v8 w={WT} l=0.35
+Rload iout 0 100000
+.control
+  set noaskquit
+  echo "  MN3_w   Vw=0.60  Vw=0.75  Vw=0.93  Vw=1.20  Vw=1.35    MONOTONIC?"
+  echo "  ------------------------------------------------------------------"
+  foreach wt 10 6 4 2 1 0.6
+    alterparam WT = $wt
+    reset
+    * W_eff = dI_out/dx at each Vw:  sweep inp, take the slope
+    let out = ""
+    dc Vinp 0.890 0.910 0.020 Vvw 0.60 1.35 0.15
+    let g = (v(iout)/100000)
+    * rows are pairs (inp=0.89, 0.91) for each Vw
+    let n = length(g)
+    let i = 0
+    let prev = -1e9
+    let mono = 1
+    while i < n-1
+      let we = (g[i+1] - g[i]) / 0.020 * 1e6
+      if we < prev
+        let mono = 0
+      end
+      let prev = we
+      print we
+      let i = i + 2
+    end
+    echo "   ^ MN3_w = $wt   monotonic(1=yes): $&mono"
+    destroy all
+  end
+  quit
+.endc
+.end

@@ -1,0 +1,140 @@
+* =============================================================================
+* tb_mac_cell_jug_dc — DC characterisation of the SINGLE-TAIL jug MAC cell
+* File:      tb_mac_cell_jug_dc.spice
+* Process:   SkyWater Sky130A
+* Simulator: ngspice 37+
+*
+* THE POINT OF THIS TESTBENCH
+* ---------------------------
+* T1. **Ce MUST HAVE NO EFFECT ON iout.**  Sweep V_Ce across its FULL range and prove
+*     I(iout) does not move.  This is the WHOLE REASON MN3_e was deleted, and SPICE can
+*     prove it exactly.  In mac_cell_emx this sweep moved iout by tens of microamps
+*     (the dual-tail summation); here it must be BIT-FLAT.
+*     ** PASS CRITERION: dI(iout)/dV_Ce == 0 to numerical precision. **
+*
+* T2. ntail stays in SATURATION across the whole Vw range, WITHOUT the dual-tail conflict.
+*     mac_cell_emx could not do this at V_bias_e = VCM: the MN3_e saturation requirement
+*     V(ntail) > 0.42 V and the diff-pair requirement V(ntail) < 0.42 V were simultaneously
+*     impossible, and both tails collapsed into triode at ntail ~ 22 mV.
+*     With one tail there is no conflict.  MEASURE the actual window.
+*
+* T3. gm_W across the weight range — the ONLY gm this cell has.  (gm_E characterisation
+*     and the "gm_E ~ gm_W" matching requirement are DELETED with MN3_e.)
+*
+* T4. ** THE CHARGE-PUMP QUANTUM. **  One weight LSB = 7.02 mV on Cw = 200 fF => 1.405 fC.
+*     Verify the cell's I_out actually resolves a 7.02 mV step in Vw — i.e. that ONE CODE
+*     is a distinguishable output change.  If it is not, the jug's ±1 LSB write is a no-op
+*     and the whole mechanism fails at the first hurdle.
+*
+* Run:  ngspice -b tb_mac_cell_jug_dc.spice
+* =============================================================================
+
+.title tb_mac_cell_jug_dc  single-tail jug MAC cell DC characterisation
+
+.include 'mac_cell_jug.spice'
+.lib "/home/saul/.volare/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.tech/ngspice/sky130.lib.spice" tt
+
+* -- Global parameters ----------------------------------------------------
+.param VDD_val  = 1.8
+.param VCM_val  = 0.9
+.param Vw_min   = 0.500     ; WGT_MIN, code 71
+.param Vw_zero  = 0.927     ; WGT_ZERO, code 132  (the symmetric centre)
+.param Vw_max   = 1.350     ; WGT_MAX, code 192
+.param V_LSB    = 7.02e-3   ; ONE weight code = 7.02 mV on Cw  (PHYSICAL_SPEC.md §2)
+.param Vbe_val  = 0.900     ; V_bias_e — NOW FREE (see below). Start at VCM, not VPI.
+.param Ce_swing = 0.100     ; the jug needs ~+-100 mV (PHYSICAL_SPEC.md §3)
+
+* -- Supply rails ---------------------------------------------------------
+Vvdd  vdd  0  DC {VDD_val}
+Vvss  vss  0  DC 0
+
+* -- Weight drive (ideal; TG in hold) -------------------------------------
+Vvw  vw_node  0  DC {Vw_zero}
+
+* -- Ce drive (ideal; TG in hold) -----------------------------------------
+* ** V_bias_e IS NOW A FREE VARIABLE. **  mac_cell_emx was PINNED to VPI = 0.65 V by the
+* dual-tail triode conflict.  That conflict died with MN3_e.  We start at VCM = 0.9 V and
+* T1 will confirm the choice is IRRELEVANT to the MAC — which is the point: V_bias_e is now
+* set purely by the COMPARATOR's input common-mode range (see jug_compare.spice).
+Vve  ve_node  0  DC {Vbe_val}
+
+* -- Differential inputs --------------------------------------------------
+Vinp  inp_node  0  DC {VCM_val}
+Vinn  inn_node  0  DC {VCM_val}
+
+* -- TG control (hold mode) -----------------------------------------------
+Vwe_w  we_w_node  0  DC 0
+Vwe_e  we_e_node  0  DC 0
+Rbleed_w  iwrite_w_node  0  1000meg
+Rbleed_e  iwrite_e_node  0  1000meg
+
+* -- DUT ------------------------------------------------------------------
+Xcell  iout_node  inp_node  inn_node  vw_node  iwrite_w_node  we_w_node
++       ve_node  iwrite_e_node  we_e_node  vdd  vss  mac_cell_jug
+
+Rload  iout_node  0  100000
+
+.control
+  set noaskquit
+  set wr_singlescale
+  echo "=============================================================================="
+  echo "  tb_mac_cell_jug_dc — SINGLE-TAIL cell (MN3_e DELETED)"
+  echo "=============================================================================="
+
+  * ---------------------------------------------------------------------------
+  * T1 — ** Ce MUST HAVE NO EFFECT ON iout **  (the reason MN3_e was deleted)
+  * ---------------------------------------------------------------------------
+  echo " "
+  echo "T1: sweep V_Ce over its FULL +-100 mV swing. iout MUST NOT MOVE."
+  dc Vve 0.70 1.10 0.02
+  let iout_vs_ve = -i(Vvdd)
+  let ve_spread  = vecmax(iout_vs_ve) - vecmin(iout_vs_ve)
+  print ve_spread
+  echo "   ^ dI(supply) across the WHOLE Ce range. Must be ~0 (single tail: Ce drives nothing)."
+  echo "   In mac_cell_emx this moved TENS OF MICROAMPS (dual-tail summation)."
+  destroy all
+
+  * ---------------------------------------------------------------------------
+  * T2 — ntail saturation window across the weight range (no dual-tail conflict)
+  * ---------------------------------------------------------------------------
+  echo " "
+  echo "T2: ntail vs Vw across the full weight range. ONE tail => no triode conflict."
+  dc Vvw 0.500 1.350 0.025
+  print v(xcell.ntail)
+  echo "   ^ must stay in the diff-pair window: 0 < V(ntail) < inp - Vth (~0.42 V)."
+  destroy all
+
+  * ---------------------------------------------------------------------------
+  * T3 — gm_W (the ONLY gm this cell has)
+  * ---------------------------------------------------------------------------
+  echo " "
+  echo "T3: I_tail vs Vw  =>  gm_W = dI/dVw."
+  dc Vvw 0.500 1.350 0.010
+  let itail = -i(Vvdd)
+  let gm_w  = deriv(itail)
+  print itail gm_w
+  destroy all
+
+  * ---------------------------------------------------------------------------
+  * T4 — ** THE CHARGE-PUMP QUANTUM: is ONE weight code resolvable at the output? **
+  * ---------------------------------------------------------------------------
+  echo " "
+  echo "T4: does ONE code (7.02 mV on Cw) produce a distinguishable output change?"
+  echo "    If not, the jug's +-1 LSB write is a NO-OP and the mechanism fails."
+  * step Vw by exactly one LSB about WGT_ZERO and measure the delta
+  alter Vvw dc = 0.927
+  op
+  let i_at_zero = -i(Vvdd)
+  alter Vvw dc = 0.93402
+  op
+  let i_at_zero_plus_1lsb = -i(Vvdd)
+  let di_per_code = i_at_zero_plus_1lsb - i_at_zero
+  print i_at_zero i_at_zero_plus_1lsb di_per_code
+  echo "   ^ di_per_code is the current step ONE FIRE produces. Must be >> mirror noise."
+
+  echo " "
+  echo "=============================================================================="
+  quit
+.endc
+
+.end

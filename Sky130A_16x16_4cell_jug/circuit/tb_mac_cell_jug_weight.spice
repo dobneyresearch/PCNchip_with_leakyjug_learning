@@ -1,0 +1,59 @@
+* =============================================================================
+* tb_mac_cell_jug_weight — THE CODE -> WEIGHT TRANSFER FUNCTION
+*
+* ★★ THE QUESTION ★★
+* The sim assumes the weight is LINEAR in the code:  W = (code - 132) / 64.
+* The silicon stores it as a VOLTAGE on Cw, and the MAC's effective weight is dI_out/dx.
+*
+* tb_mac_cell_jug_dc showed V(ntail) collapses to ~33 mV at WGT_ZERO => MN3_w is in TRIODE,
+* and I_tail COMPRESSES badly at high Vw (64.5 -> 72 uA across the whole top of the range).
+* The jug's entire mechanism is "ONE FIRE = ONE CODE".  If a code is worth 10x more weight
+* at one end of the range than the other, THE EFFECTIVE LEARNING RATE DEPENDS ON WHERE THE
+* WEIGHT SITS.
+*
+* Two-dimensional DC sweep: inp across a small differential window, Vw across the full
+* weight range.  Output written to output/w_transfer.csv and analysed by analyse_weight.py.
+*
+*   W_eff(Vw) = dI_out / d(inp - VCM)      <- the REAL weight the MAC applies
+*
+* FATAL   : W_eff non-monotonic in Vw (two codes, one weight).
+* SERIOUS : dW/dcode varies by a large factor across the range.
+*
+* Run:  ngspice -b tb_mac_cell_jug_weight.spice  &&  python3 analyse_weight.py
+* =============================================================================
+
+.title tb_mac_cell_jug_weight  code -> weight transfer function
+
+.include 'mac_cell_jug.spice'
+.lib "/home/saul/.volare/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.tech/ngspice/sky130.lib.spice" tt
+
+.param VDD_val = 1.8
+.param VCM_val = 0.9
+
+Vvdd  vdd  0  DC {VDD_val}
+Vvss  vss  0  DC 0
+Vvw   vw_node  0  DC 0.927
+Vve   ve_node  0  DC 0.900
+Vinn  inn_node 0  DC {VCM_val}
+Vinp  inp_node 0  DC {VCM_val}
+Vwe_w we_w_node 0 DC 0
+Vwe_e we_e_node 0 DC 0
+Rbleed_w iwrite_w_node 0 1000meg
+Rbleed_e iwrite_e_node 0 1000meg
+
+Xcell iout_node inp_node inn_node vw_node iwrite_w_node we_w_node
++      ve_node iwrite_e_node we_e_node vdd vss mac_cell_jug
+Rload iout_node 0 100000
+
+.control
+  set noaskquit
+  set wr_vecnames
+  set wr_singlescale
+
+  * 2-D sweep: inner = differential input (for dI/dx), outer = Vw (the weight code)
+  dc Vinp 0.890 0.910 0.010  Vvw 0.500 1.350 0.00702
+  wrdata output/w_transfer.csv v(iout_node) v(xcell.ntail)
+  quit
+.endc
+
+.end

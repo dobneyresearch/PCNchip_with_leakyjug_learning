@@ -1,0 +1,118 @@
+* =============================================================================
+* weight_dac_10b — 10-BIT R-2R weight DAC  (was 8-bit)
+* File:      weight_dac_10b.spice
+* Process:   SkyWater Sky130A
+*
+* =============================================================================
+* ★★ WHY 10 BITS, NOT 8 ★★
+* =============================================================================
+* The 8-bit DAC maps code -> V_w **LINEARLY**.  The CELL maps V_w -> weight **SIGMOIDALLY**
+* (SPICE-measured on mac_cell_jug, MN3_w=2: dW/dcode is ~0.05 uA/V at the rails and ~1.42 in
+* the middle — a **28x SENSITIVITY VARIATION**).  Compose them and THE WEIGHT IS NOT LINEAR IN
+* THE CODE — which every simulation in this project has assumed since the beginning.
+*
+* (At the INHERITED MN3_w=10 it was far worse than non-linear: gm PEAKED at V_w ~ 0.90 V and
+*  FELL above it, WGT_ZERO sat ON the peak, and codes 119..192 — THE ENTIRE POSITIVE WEIGHT
+*  RANGE — were dead or INVERTED.  See THE_WEIGHT_IS_NOT_LINEAR.md.)
+*
+* THE FIX: **PRE-DISTORT the DAC** (rtl/wgt_lut.v) — choose V_w per code so the WEIGHT steps are
+* uniform.  The composition (LUT -> linear DAC -> sigmoidal cell) is then LINEAR, and the sim's
+* assumption becomes TRUE OF THE SILICON rather than a convenient fiction.
+*
+* ⚠ BUT THE LUT NEEDS SOMEWHERE TO PUT THE PRE-DISTORTION.  Uniform WEIGHT steps require
+* NON-uniform V_w steps: small in the steep region of the sigmoid, large at the rails.  With an
+* 8-bit DAC the code IS the V_w step — there is no spare resolution to redistribute.
+*
+*     8-bit stored weight code  ->  [LUT]  ->  10-bit DAC drive
+*
+* 10 bits gives 4x the V_w resolution: ample room for the LUT to stretch the middle and compress
+* the ends.  MEASURED: uniform +-28 units (88% of the sigmoid's span) needs only 427 mV of the
+* 850 mV V_w budget, with FULL 121-code resolution.
+*
+* RESULT (pcn_jug.py):
+*     linear DAC   => sigmoid weight, full range (theta=16, its best)   80.51%
+*     ** PRE-DISTORTED DAC => LINEAR weight, +-0.83 **                  81.46%
+*     (the old, UNACHIEVABLE linear assumption, full +-0.95 rail)       81.96%
+* ** 81.46 vs 81.96 is INSIDE the 0.7pp noise floor. **
+*
+* ★ AND THE LUT IS LOADABLE ⇒ it is the **PER-DIE CALIBRATION HOOK**.  The sigmoid is a property
+*   of the CELL AND THE PROCESS; a hard-wired non-linear ladder could not track process variation.
+*   A table you measure per die and write over WB can.
+* =============================================================================
+*
+* R-2R ladder, 10 bits.  b9 = MSB (at vdac), b0 = LSB.
+*   - 9 series R (50 kOhm) between adjacent ladder nodes
+*   - 10 shunt 2R (100 kOhm) from each node to its bit switch tap
+*   - 1 termination 2R (100 kOhm) at the LSB end, to VSS
+*   - each bit switch selects its 2R tap to Vref (b=1) or VSS (b=0)
+*
+* Output range is UNCHANGED (0 .. Vref); only the RESOLUTION changes (4x finer).
+* Ron = 100 Ohm << R_ladder (50 kOhm) => negligible DNL.
+* =============================================================================
+
+.subckt weight_dac_10b vdd vss vref b9 b8 b7 b6 b5 b4 b3 b2 b1 b0 vdac
+
+.model sw_hi sw (Ron=100 Roff=1G Vt=0.9 Vh=0.4)
+
+* -- complementary bit signals (B-source inverters; no PDK needed) ------------
+* nb = vdd - b   (exact for digital signals that are always 0 V or VDD)
+Bnb0 nb0 0 V = v(vdd) - v(b0)
+Bnb1 nb1 0 V = v(vdd) - v(b1)
+Bnb2 nb2 0 V = v(vdd) - v(b2)
+Bnb3 nb3 0 V = v(vdd) - v(b3)
+Bnb4 nb4 0 V = v(vdd) - v(b4)
+Bnb5 nb5 0 V = v(vdd) - v(b5)
+Bnb6 nb6 0 V = v(vdd) - v(b6)
+Bnb7 nb7 0 V = v(vdd) - v(b7)
+Bnb8 nb8 0 V = v(vdd) - v(b8)
+Bnb9 nb9 0 V = v(vdd) - v(b9)
+
+* -- ladder nodes: vdac = MSB node (b9); n0 = LSB node (b0) -------------------
+Rs9  vdac  n8  50000
+Rs8  n8  n7  50000
+Rs7  n7  n6  50000
+Rs6  n6  n5  50000
+Rs5  n5  n4  50000
+Rs4  n4  n3  50000
+Rs3  n3  n2  50000
+Rs2  n2  n1  50000
+Rs1  n1  n0  50000
+
+* -- termination 2R at the LSB end (always to VSS, no switch) -----------------
+Rterm n0 vss 100000
+
+* -- shunt 2R from each ladder node to its bit-switch tap ---------------------
+Rsh9 vdac  nt9 100000
+Rsh8 n8  nt8 100000
+Rsh7 n7  nt7 100000
+Rsh6 n6  nt6 100000
+Rsh5 n5  nt5 100000
+Rsh4 n4  nt4 100000
+Rsh3 n3  nt3 100000
+Rsh2 n2  nt2 100000
+Rsh1 n1  nt1 100000
+Rsh0 n0  nt0 100000
+
+* -- bit switches: tap -> Vref (b=1) or VSS (b=0) -----------------------------
+Sref9 nt9 vref  b9 0 sw_hi
+Sgnd9 nt9 vss  nb9 0 sw_hi
+Sref8 nt8 vref  b8 0 sw_hi
+Sgnd8 nt8 vss  nb8 0 sw_hi
+Sref7 nt7 vref  b7 0 sw_hi
+Sgnd7 nt7 vss  nb7 0 sw_hi
+Sref6 nt6 vref  b6 0 sw_hi
+Sgnd6 nt6 vss  nb6 0 sw_hi
+Sref5 nt5 vref  b5 0 sw_hi
+Sgnd5 nt5 vss  nb5 0 sw_hi
+Sref4 nt4 vref  b4 0 sw_hi
+Sgnd4 nt4 vss  nb4 0 sw_hi
+Sref3 nt3 vref  b3 0 sw_hi
+Sgnd3 nt3 vss  nb3 0 sw_hi
+Sref2 nt2 vref  b2 0 sw_hi
+Sgnd2 nt2 vss  nb2 0 sw_hi
+Sref1 nt1 vref  b1 0 sw_hi
+Sgnd1 nt1 vss  nb1 0 sw_hi
+Sref0 nt0 vref  b0 0 sw_hi
+Sgnd0 nt0 vss  nb0 0 sw_hi
+
+.ends weight_dac_10b

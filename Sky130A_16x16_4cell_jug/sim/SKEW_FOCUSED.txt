@@ -1,0 +1,7 @@
+focused skew: ep=2 ch=4000 seed=42  baseline(skew=0)=67.47%  14:59
+skew=1 lag  :   >>> JUG theta=8.0 leak=pure act=8 e_fwd=0.0 agc=rms code=linear : BEST = 67.47%   (float spec on BIG = 82.50%)
+skew=2 lag  :   >>> JUG theta=8.0 leak=pure act=8 e_fwd=0.0 agc=rms code=linear : BEST = 66.33%   (float spec on BIG = 82.50%)
+skew=4 lag  :   >>> JUG theta=8.0 leak=pure act=8 e_fwd=0.0 agc=rms code=linear : BEST = 65.75%   (float spec on BIG = 82.50%)
+skew=8 lag  :   >>> JUG theta=8.0 leak=pure act=8 e_fwd=0.0 agc=rms code=linear : BEST = 66.34%   (float spec on BIG = 82.50%)
+skew=8 rand :   >>> JUG theta=8.0 leak=pure act=8 e_fwd=0.0 agc=rms code=linear : BEST = 67.13%   (float spec on BIG = 82.50%)
+done 15:20

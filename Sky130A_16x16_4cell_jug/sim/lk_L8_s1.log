@@ -1,0 +1,35 @@
+Loading EMNIST split-sign BIG L0 features ...
+  124,800 train / 20,800 test  (26 classes, 1152 split-sign feats)
+  Loaded L1 weights (24 chips x 3 pages, EMNIST per-chip PCA)
+  Loaded L2 weights (8 chips x 3 pages, EMNIST per-chip PCA)
+
+==============================================================================
+BIT-ACCURATE HARDWARE MODEL — BIG (24/8/16 chips)
+  activations : 8-bit ADC at EVERY layer
+  weight cell : 8-bit analog (CODE_MID=132) + 0 SUB-LSB bits
+                => 8-bit digital master, 1 master-LSB per write
+                => the analog cell moves 1 LSB every ~1 folds
+  delta       : 6-bit signed + power-of-2 AGC (a SHIFT)
+  E accum     : 20-bit saturating
+  velocity    : 12-bit,  mu = 1-2^-3 = 0.875
+  leaky       : alpha = 2^-3 = 0.125  (a SHIFT)
+  AGC ref     : rms
+  ADC gain    : per-layer shifts [3, 6, 6] (>>3, >>6, >>6)
+==============================================================================
+
+  ** LEAKY JUG **  E leaks (the leak IS momentum); a threshold crossing fires
+                   a whole +-1 cell-LSB.  frac_bits FORCED to 0:
+                   NO digital master, NO velocity register, NO per-synapse SRAM.
+     leak       : lambda = 1-2^-8 = 0.9961  (~256-fold memory)
+                  E_ss = g/(1-lambda) = 256g  => fires only if theta < 256g
+     theta      : 1.0 x the per-fold rms of |E|  (per layer)
+  jug theta   : [247, 1087, 1009]  (per layer, fixed at calibration)
+  ep 1  test=68.85%  (best 68.85%)  Esat= 0.0%  fire=11.06%/fold  FROZEN= 11.1%  [121s]
+  ep 2  test=72.79%  (best 72.79%)  Esat= 0.0%  fire= 9.39%/fold  FROZEN=  5.7%  [228s]
+  ep 3  test=74.65%  (best 74.65%)  Esat= 0.0%  fire= 8.48%/fold  FROZEN=  3.9%  [330s]
+  ep 4  test=75.92%  (best 75.92%)  Esat= 0.0%  fire= 7.50%/fold  FROZEN=  2.8%  [414s]
+  ep 5  test=76.38%  (best 76.38%)  Esat= 0.0%  fire= 7.07%/fold  FROZEN=  1.9%  [493s]
+  ep 6  test=77.16%  (best 77.16%)  Esat= 0.0%  fire= 6.89%/fold  FROZEN=  1.4%  [564s]
+
+  >>> JUG theta=1.0 leak=8 act=8 e_fwd=0.0 agc=rms code=linear : BEST = 77.16%   (float spec on BIG = 82.50%)
+

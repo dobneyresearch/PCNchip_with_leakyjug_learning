@@ -1,0 +1,170 @@
+* =============================================================================
+* JUG — SINGLE-TAIL MAC Cell Library
+* File:      mac_cell_jug.spice
+* Process:   SkyWater Sky130A  (sky130_fd_pr)
+* Simulator: ngspice 37+
+*
+* Subcircuits defined:
+*   mac_cell_jug    single-tail MAC cell (Cw drives the MAC; Ce is a COMPARE-ONLY node)
+*
+* =============================================================================
+* ★★ WHAT CHANGED FROM mac_cell_emx: **MN3_e (the E-TAIL) IS DELETED.**
+* =============================================================================
+*
+* The old cell was DUAL-TAIL — I_ntail = I_tail_W + I_tail_E — so Ce injected current
+* into the MAC and the effective weight was (W + E).  That was deliberate: under the
+* OLD learning rule, E was a live residual the MAC was MEANT to see.
+*
+* Under the JUG, E is an ACCUMULATOR, not a residual, and its presence in the forward
+* path is PURELY HARMFUL.  Measured (weight codes that a full-threshold E contributes
+* to the MAC; bit-accurate model, BIG topology, EMNIST letters):
+*
+*     E in MAC:   0      0.1     0.2    0.4*    1.0     2.0        6.7
+*     accuracy:  81.96  82.06  81.32  80.46  76.83  COLLAPSE  COLLAPSE
+*                                       ^^^^          47->12%    ->10%
+*                              * = the OLD gm_E ~ gm_W design point
+*
+* It is a POSITIVE-FEEDBACK RUNAWAY: E feeds the MAC -> activations grow -> deltas grow
+* -> E grows faster -> fires more.  Fire rate explodes 0.91%/fold -> 14.8% -> 19.3%.
+* The old design point sat at ~0.4 codes: ALREADY LOSSY, and only ~2.5x from runaway,
+* on a gm ratio that drifts with process and temperature.
+*
+* => Ce NEVER needs to inject current into the MAC.  It only needs to be COMPARED
+*    against a threshold (see jug_compare.spice).  So MN3_e goes.
+*
+* ── THREE CONSEQUENCES, ALL GOOD ─────────────────────────────────────────────
+*
+* 1. **The V_bias_e triode conflict DISSOLVES.**  mac_cell_emx was forced to
+*    V_bias_e = VPI = 0.65 V (not VCM = 0.9 V) because MN3_e shared `ntail`: at 0.9 V the
+*    MN3_e saturation requirement V(ntail) > 0.42 V and the diff-pair requirement
+*    V(ntail) < inp - Vth = 0.42 V were SIMULTANEOUSLY IMPOSSIBLE.  Both tails collapsed
+*    into triode at V(ntail) ~ 22 mV (SPICE, 2026-06-27).  That cost a design iteration.
+*    THAT CONFLICT EXISTED ONLY BECAUSE MN3_e SHARED ntail.  It is gone with the device.
+*    => V_bias_e is now set PURELY by the comparator's input common-mode range.
+*       DO NOT inherit 0.65 V by default — re-derive it in jug_compare.spice.
+*
+* 2. **The SPICE job SHRINKS.**  gm_E characterisation and the "gm_E ~ gm_W" matching
+*    requirement are DELETED.  This cell needs gm_W only.
+*
+* 3. **Ce is FREE TO SWING.**  The old E_MAX_V = +-55 mV was a MAC constraint (Ce had to
+*    stay in the tail's linear window).  Ce is out of the signal path now, so its swing is
+*    bounded only by inject compliance and comparator range.  The jug needs ~+-100 mV
+*    (see PHYSICAL_SPEC.md §3) — which would NOT have fitted under +-55 mV.
+*    ** THE THERMAL-NOISE BUDGET ONLY CLOSES BECAUSE THE E-TAIL IS GONE. **
+*
+* Supply conventions:
+*   VDD = 1.8 V   (sky130_fd_pr__[np]fet_01v8 nominal supply)
+*   VSS = 0 V     (substrate / bulk reference)
+*   VCM = 0.9 V   (common-mode reference from bias_gen)
+*
+* All W/L in MICRONS (ngspice hsa mode sets scale=1e-6).  Capacitors in Farads.
+* =============================================================================
+
+
+* =============================================================================
+* Subcircuit: mac_cell_jug
+* =============================================================================
+*
+*   Cw (200 fF): WeightMx capacitor.  Vw in [0.50, 1.35 V], 121 codes.
+*     MN3_w: THE ONLY TAIL.  I_tail ~ (Vw - Vth)^2.
+*     ** ONE weight LSB = 7.02 mV on Cw  =>  dQ = 1.405 fC. **  (PHYSICAL_SPEC.md §2)
+*     Written by weight_dac (load / refresh) and by the JUG CHARGE PUMP (+-1 code per fire).
+*     Backed by W-SRAM; refresh_ctrl restores it against leakage.
+*
+*   Ce (100 fF): the JUG.  Accumulates signed (delta * x) charge injections and IS NEVER
+*     DISCHARGED.  Read ONLY by the comparator in jug_compare.spice.
+*     ** NOT IN THE SIGNAL PATH. It drives no transistor gate in this cell. **
+*     Swing ~ +-100 mV about V_bias_e (free — see note 3 above).
+*
+* Port list:
+*   iout      output current node           -> to accumulation bus
+*   inp       differential input IN+        <- signal (one dim of x_in)
+*   inn       differential input IN-        <- tied to VCM for single-ended use
+*   vw        WeightMx voltage node         <- probe / weight_dac / charge pump target
+*   iwrite_w  W DAC current input           <- from weight_dac
+*   we_w      W write enable (0/1.8 V)      <- high = write Cw; low = hold
+*   ve        JUG voltage node              <- probe / inject target / COMPARATOR INPUT
+*   iwrite_e  E inject current input        <- from e_inject circuit
+*   we_e      E write enable (0/1.8 V)      <- high = inject onto Ce; low = hold
+*   vdd       1.8 V supply
+*   vss       0 V ground
+*
+* NOTE `ve` is now an OUTPUT-ONLY sense node as far as this cell is concerned: nothing
+* inside mac_cell_jug reads it.  It exists so the comparator can.
+* -----------------------------------------------------------------------------
+.subckt mac_cell_jug iout inp inn vw iwrite_w we_w ve iwrite_e we_e vdd vss
+
+* -- PMOS current mirror load ---------------------------------------------
+* Unchanged.  L=0.7 um reduces CLM and improves mirror accuracy.
+XMP1 nmp1 nmp1 vdd vdd sky130_fd_pr__pfet_01v8 w=4 l=0.7
+XMP2 iout nmp1 vdd vdd sky130_fd_pr__pfet_01v8 w=4 l=0.7
+
+* -- NMOS differential input pair -----------------------------------------
+* Sources tied to ntail.  The tail current is now set SOLELY by Cw.
+XMN1 nmp1  inp  ntail vss sky130_fd_pr__nfet_01v8 w=2 l=0.35
+XMN2 iout  inn  ntail vss sky130_fd_pr__nfet_01v8 w=2 l=0.35
+
+* -- THE ONLY TAIL (WeightMx) ---------------------------------------------
+* Gate = Vw.  I_tail ~ (Vw - Vth)^2.
+*
+* ★★★ W = 2, NOT 10.  THIS IS A BUG FIX, NOT A TUNING CHOICE. ★★★
+* At w=10 (the inherited value) MN3_w demands more current than the w=4 PMOS mirror can
+* supply.  ntail COLLAPSES (222 mV -> 15 mV), MN3_w drops into TRIODE (it needs
+* V_ds > V_gs - V_th ~ 0.45 V; at WGT_ZERO it has 31 mV), and I_tail SATURATES.  The output
+* node also sags to ~0.195 V under the 100k row load, starving MN2 as well.
+*
+* CONSEQUENCE AT w=10: the effective weight gm(V_w) PEAKS at V_w ~ 0.90 V and FALLS above it.
+* WGT_ZERO (code 132) sits at V_w = 0.927 V — ON THE PEAK.  So codes 119..192 — THE ENTIRE
+* POSITIVE WEIGHT RANGE — are dead or INVERTED: a fire that should push the weight UP pushes
+* it slightly DOWN.  Measured: code 191 (which should be the MOST POSITIVE weight available)
+* delivers a NEGATIVE effective weight.
+*
+* Predates the jug; affects EMX, FABLE and every accuracy number in the project.  Never
+* caught because every testbench pinned V_w = 0.75 V (code 107 — the healthy RISING side of
+* the peak), and the WGT_ZERO sign check was a PRODUCT (I_diff(128)*I_diff(136) < 0), which
+* passes for an INVERTED response too.  See THE_WEIGHT_IS_NOT_LINEAR.md.
+*
+* w=2 keeps MN3_w in saturation across the WHOLE V_w range and restores a MONOTONIC,
+* correctly-signed weight (measured 4.6 -> 17.4 -> 50.0 -> 61.8 -> 65.9 -> 67.6 uA/V across
+* V_w = 0.60 .. 1.35).  Still COMPRESSIVE (low codes far more sensitive than high) —
+* monotonic and correctly signed, but NOT LINEAR, which the sim still assumes.
+XMN3_w ntail vw  vss vss sky130_fd_pr__nfet_01v8 w=2 l=0.35
+
+* ***  XMN3_e DELETED — see the header. Ce drives NOTHING in the signal path.  ***
+
+* -- Storage capacitors ---------------------------------------------------
+* Cw: the weight.  Droop ~50 uV/s (subthreshold leakage 5-10 fA); refresh_ctrl restores it.
+* Ce: THE JUG.  Same leakage => ~140 s per E-LSB, against an inter-fire interval of
+*     ~tens of ms.  tau_leak / inter-fire ~ 1e3-1e4, so on the firing timescale Ce is a
+*     PURE INTEGRATOR — which is exactly the best-performing configuration in simulation.
+*     ** The physics hands us the optimum for free. No leak trim, no servo, no replica bias. **
+Cw vw vss 200e-15
+Ce ve vss 100e-15
+
+* -- W access CMOS Transmission Gate --------------------------------------
+Bwe_w_n we_w_n 0 V = v(vdd) - v(we_w)
+XMN4_w iwrite_w we_w   vw       vss sky130_fd_pr__nfet_01v8 w=0.5 l=0.5
+XMP4_w vw       we_w_n iwrite_w  vdd sky130_fd_pr__pfet_01v8 w=1.0 l=0.35
+
+* -- E (jug) access CMOS Transmission Gate --------------------------------
+* Passes the signed inject charge onto Ce when we_e = high.  Hold (we_e = 0): both off,
+* Ce holds its charge with leakage only.
+* ** kT/C NOISE IS SAMPLED EVERY TIME THIS SWITCH CLOSES. ** That is the ONE tight spec
+* in the whole design: sigma(kT/C) must be <= 0.1 * theta.  sqrt(kT/C) on 100 fF is
+* 204 uV rms; with theta ~23 mV and N=128 injections/fold, sqrt(128)*204u = 2.3 mV = 0.1*theta.
+* MEASURED tolerance (bit-accurate model, ref 81.96%):
+*     sigma/theta:  0.05 -> 81.75 (free) | 0.10 -> 81.36 | 0.25 -> 78.55 | 1.0 -> COLLAPSE
+* WHY this is the one tight spec: every other perturbation corrupts a DECISION (when a
+* synapse fires, or occasionally which way) and the residue subtraction undoes it, because
+* CHARGE IS CONSERVED.  Thermal noise corrupts the EVIDENCE — and charge that was never
+* real cannot be subtracted back out.
+Bwe_e_n we_e_n 0 V = v(vdd) - v(we_e)
+XMN4_e iwrite_e we_e   ve       vss sky130_fd_pr__nfet_01v8 w=0.5 l=0.5
+XMP4_e ve       we_e_n iwrite_e  vdd sky130_fd_pr__pfet_01v8 w=1.0 l=0.35
+
+.ends mac_cell_jug
+
+
+* =============================================================================
+* End of library
+* =============================================================================

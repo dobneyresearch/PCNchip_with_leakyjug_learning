@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+
+# Regenerated data caches (see README "Data and caches") — hundreds of MB, not versioned
+l0_cache_emnist/
+l0_cache/
+weights_big_emnist/
+weightsl2/
+results/
+
+# LaTeX build products (main_stage2_v4.pdf IS versioned; these are not)
+*.aux
+*.bbl
+*.blg
+*.out
+*.toc
+*.synctex.gz
+paper/*.log
+
+# Simulator scratch
+*.vcd
+*.vvp

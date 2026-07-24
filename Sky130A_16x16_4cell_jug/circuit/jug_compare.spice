@@ -1,0 +1,261 @@
+* =============================================================================
+* JUG — theta COMPARATOR + RESIDUE SUBTRACTION
+* File:      jug_compare.spice
+* Process:   SkyWater Sky130A  (sky130_fd_pr)
+* Simulator: ngspice 37+
+*
+* =============================================================================
+* ★★ WHAT THIS BLOCK IS, AND WHAT IT IS NOT
+* =============================================================================
+*
+*   Ce accumulates signed (delta * x) charge injections and IS NEVER DISCHARGED.
+*   A SHARED comparator, swept across the array by absorb_ctrl, tests each cell once
+*   per sweep:
+*
+*       |V_Ce - V_bias_e| >= theta ?
+*           YES ->  FIRE:  W-SRAM code +- 1        (a DIGITAL increment — see below)
+*                          V_Ce  -=  sign * theta   ← SUBTRACT. The residue is KEPT.
+*           NO  ->  nothing. The charge stays on Ce.
+*
+* ── ⚠ THERE IS NO CHARGE PUMP INTO Cw. ──────────────────────────────────────
+* An earlier spec called for "deposit 1.405 fC on Cw = one 7.02 mV step".  THAT WAS WRONG.
+* It assumed a LINEAR weight DAC (every code = 7.02 mV of V_w).  The DAC is now
+* **PRE-DISTORTED** (a calibration LUT: code -> V_w chosen so the WEIGHT steps are uniform —
+* see THE_WEIGHT_IS_NOT_LINEAR.md), so a code is a NON-UNIFORM V_w step: small in the steep
+* region of the cell's sigmoid, large at the rails.  A fixed-charge pump would give a fixed
+* VOLTAGE step, which is precisely the wrong thing.
+*
+* ** A FIRE IS A +-1 INCREMENT ON THE 8-BIT W-SRAM CODE. **  The existing weight_dac +
+* refresh_ctrl path repaints Cw through the LUT.  No new analog write path is needed:
+*   - W-SRAM is always the current master  => refresh never has to be disabled
+*   - `save` is not needed during training  => the absorb->save->sync->refresh cycle collapses
+*   - the W-cap leak risk goes away STRUCTURALLY, not by scheduling
+*
+* ⇒ THIS BLOCK'S ONLY ANALOG JOB IS ON Ce:  compare it, and subtract theta from it.
+*
+* =============================================================================
+* ★★★ WHAT MUST BE EXACT, AND WHAT MAY BE SLOPPY
+* =============================================================================
+*
+* THE COMPARATOR MAY BE SLOPPY.  Measured on the bit-accurate model (ref 81.96%):
+*     * offset may be a LARGE FRACTION of theta   -> x2 threshold mismatch costs 0.76pp
+*     * it may get the SIGN WRONG **20% of the time** -> costs 0.34pp
+*     * Ce matching is a NON-REQUIREMENT          -> 10x log-normal spread costs 0.58pp
+*   WHY the sign errors are free: a wrong fire moves W the wrong way AND subtracts theta in
+*   the wrong direction — i.e. it PUTS THE CHARGE BACK.  The next correct fire undoes both.
+*   **CHARGE IS CONSERVED, so the error self-corrects.**
+*
+* ⚠ THE RESIDUE SUBTRACTION MUST BE EXACT.  It is the ONE tight analog spec in the design.
+*   Discharging Ce (the OLD absorb's step 4) throws away exactly the sub-threshold charge the
+*   mechanism exists to accumulate.  Subtracting theta makes this a true SIGMA-DELTA: no
+*   charge, and therefore no learning signal, is ever lost.
+*
+*   ** The sigma-delta can forgive a bad DECISION.  It cannot forgive a LIE ABOUT HOW MUCH
+*      CHARGE IS THERE. **  (This is also why kT/C noise on Ce is the one tight NOISE spec:
+*      sigma <= 0.1 * theta.  See PHYSICAL_SPEC.md §3.)
+*
+* =============================================================================
+* THE SUBTRACTION MECHANISM — a PULSED CURRENT SOURCE (Q = I*t)
+* =============================================================================
+*
+* ⚠⚠ WHAT DOES **NOT** WORK — and SPICE caught it on the first run:
+*
+*   A FLYING CAPACITOR whose top plate sits permanently on the Ce node CANNOT REMOVE CHARGE.
+*   Switching its bottom plate VREF->VSS drops V_Ce by (C_fb/Ce)*VREF — and then, the moment
+*   the switch releases and the bottom plate returns to VREF, **V_Ce BOUNCES STRAIGHT BACK.**
+*   Measured: 1.0235 V -> 0.9757 V (a clean 47.8 mV = theta) -> 1.0234 V.  NET CHARGE REMOVED:
+*   **ZERO.**  The capacitor only COUPLES the charge; it does not take it away.
+*
+*   ** MOVING charge is not REMOVING charge. **  A capacitor on the node cannot do it without a
+*   virtual ground (an op-amp summing node) — and we are not paying for an op-amp per cell.
+*
+* ⇒ WHAT WORKS: a **PULSED CURRENT SOURCE**.
+*
+*       Q = I * t      — a FIXED charge, genuinely removed, INDEPENDENT of V_Ce.
+*
+*   This is how sigma-delta modulators build their feedback DACs, and for exactly this reason.
+*
+*       Q_theta = Ce * theta = 100 fF * 50 mV = 5 fC
+*       => I = 500 nA for t = 10 ns   (the PRODUCT is what matters; a wider, weaker pulse
+*          is easier to control and easier to simulate than a 1 ns, 5 uA spike)
+*
+*   * fire_up -> an NMOS current SINK pulls 5 fC OFF Ce   => V_Ce drops by theta
+*   * fire_dn -> a  PMOS current SOURCE pushes 5 fC ONTO Ce => V_Ce rises by theta
+*
+*   ⚠ THE PULSE WIDTH IS PART OF THE SPEC.  The fire pulse must be a FIXED-WIDTH one-shot
+*   generated by absorb_ctrl — NOT the full sweep strobe.  Gating the current source with a
+*   100 ns strobe instead of a 1 ns one-shot would remove 100x the intended charge.
+*
+*   ⚠ COMPLIANCE: the current source must stay in saturation across Ce's whole swing
+*   (V_bias +- ~150 mV). That is what makes Q independent of V_Ce.  Check it in tb_jug_fire.
+*
+* PRECISION: theta_subtract is set by I (a current mirror — matched) and t (a digital pulse
+* width — a clock).  theta_compare is set by a voltage reference.  They do NOT automatically
+* track, so:
+*   ⚠ theta_subtract >= theta_compare is the SAFE direction.  If the subtraction were SMALLER
+*   than the threshold, a fired cell would still be above threshold and would fire again on the
+*   very next sweep — the firing rate would climb until it did drop below.  Self-limiting, not
+*   a runaway, but it inflates the effective learning rate.
+*   ** AND THE TOLERANCE IS LOOSE: a x2 threshold mismatch across the die costs 0.76pp. **
+*
+* All W/L in MICRONS.  Capacitors in Farads.
+* =============================================================================
+
+
+* =============================================================================
+* Subcircuit: jug_residue — PULSED-CURRENT theta subtraction
+* =============================================================================
+* Ports:
+*   ve       the Ce node (jug voltage)             <- shared with mac_cell_jug
+*   vdump    the STEERING DUMP node ★              <- tie to V_bias_e (see below)
+*   fire_up  FIXED-WIDTH one-shot: remove +theta of charge from Ce  (fired POSITIVE)
+*   fire_dn  FIXED-WIDTH one-shot: add    +theta of charge to   Ce  (fired NEGATIVE)
+*   vbn      NMOS current-mirror bias (sets I_theta)
+*   vbp      PMOS current-mirror bias (sets I_theta)
+*   vcn      NMOS CASCODE bias   ★ (holds MN_src's drain fixed => the mirror actually mirrors)
+*   vcp      PMOS CASCODE bias   ★
+*   vdd vss
+*
+* Q_theta = I_theta * t_pulse.  With I = 5 uA and t = 1 ns: Q = 5 fC = 50 mV on Ce = 100 fF.
+* -----------------------------------------------------------------------------
+.subckt jug_residue ve vdump fire_up fire_dn vbn vbp vcn vcp vdd vss
+
+* -- SINK: pull charge OFF Ce (V_Ce drops by theta) -------------------------
+* Current path:  ve --[MN_sw]--> nsink --[MN_cas CASCODE]--> ncas --[MN_src]--> vss
+*
+* ★ CASCODED.  Without the cascode the mirror delivered 724 nA against a 500 nA target — a 45%
+*   GAIN ERROR from channel-length modulation: MN_src's drain (nsink) sat at a very different
+*   voltage from the diode's drain in the bias branch, so the mirror did not mirror.
+*   Measured step was 72 mV instead of the 50 mV theta.
+*   MN_cas holds MN_src's drain at a FIXED voltage (~vcn - Vth) regardless of V_Ce, which fixes
+*   BOTH the gain error AND the residual V_Ce dependence of the charge packet.
+*
+* ⚠ AND NOTE THE TOLERANCE: even the UNCASCODED 45% over-subtraction was ACCEPTABLE. It errs in
+*   the SAFE direction (theta_subtract > theta_compare => a fired cell drops CLEANLY below
+*   threshold instead of re-firing next sweep), and a x2 threshold mismatch across the die costs
+*   only 0.76pp. The cascode is good engineering, not a rescue.
+* =============================================================================
+* ⚠⚠⚠ YOU MUST **STEER** THE CURRENT, NOT **SWITCH** IT.  SPICE FOUND THIS.
+* =============================================================================
+* First attempt: a switch in series with the current source (ve -[SW]- mirror - vss).
+* The step did NOT scale with I:  500 nA -> 96 mV, 260 nA -> 74.5 mV.  Extrapolating to I = 0
+* leaves **~50 mV of FIXED charge** arriving regardless of the current — as much as theta itself.
+*
+* It is NOT the switch's channel charge: adding a half-size DUMMY switch (the textbook fix)
+* changed the offset by 1.5 mV.  It is the **CURRENT SOURCE'S SETTLING TRANSIENT**: when the
+* switch closes, the parasitic capacitance at the mirror's drain node has to be charged **FROM
+* Ce**, and that is a FIXED charge, independent of I.
+*
+* ⇒ **KEEP THE CURRENT SOURCE RUNNING CONTINUOUSLY AND STEER ITS CURRENT** with a differential
+*   pair: to Ce when the cell fires, to a DUMP node otherwise.  The source never turns on or off,
+*   so Ce never sees a turn-on transient.  This is how current-steering DACs (and sigma-delta
+*   feedback DACs) are built, and this is exactly why.
+*
+*   ⚠ The dump node must sit at ~the same potential as Ce, or the steering pair will see a large
+*     differential and the current will not split cleanly. Tie it to V_bias_e.
+* =============================================================================
+
+* -- SINK: steer I_theta either to Ce (fire_up) or to the DUMP (idle) --------
+Bfup_n  fire_up_n 0 V = v(vdd) - v(fire_up)
+XMN_stA ve      fire_up    nsink vss sky130_fd_pr__nfet_01v8 w=2 l=0.15
+XMN_stB vdump   fire_up_n  nsink vss sky130_fd_pr__nfet_01v8 w=2 l=0.15
+XMN_cas nsink   vcn        ncas  vss sky130_fd_pr__nfet_01v8 w=2 l=0.5
+XMN_src ncas    vbn        vss   vss sky130_fd_pr__nfet_01v8 w=2 l=1
+
+* -- SOURCE: steer I_theta either to Ce (fire_dn) or to the DUMP (idle) ------
+Bfdn_n  fire_dn_n 0 V = v(vdd) - v(fire_dn)
+XMP_stA ve      fire_dn_n  nsrc  vdd sky130_fd_pr__pfet_01v8 w=4 l=0.15
+XMP_stB vdump   fire_dn    nsrc  vdd sky130_fd_pr__pfet_01v8 w=4 l=0.15
+XMP_cas nsrc    vcp        pcas  vdd sky130_fd_pr__pfet_01v8 w=4 l=0.5
+XMP_src pcas    vbp        vdd   vdd sky130_fd_pr__pfet_01v8 w=4 l=1
+
+.ends jug_residue
+
+
+* =============================================================================
+* Subcircuit: jug_comparator — the WINDOW comparator on Ce
+* =============================================================================
+* Ports:
+*   ve        the Ce node
+*   vbias     V_bias_e (the jug's rest voltage) — NOW A FREE VARIABLE (MN3_e is deleted, so
+*             the old dual-tail triode constraint that pinned it to 0.65 V is GONE).
+*             Set from the COMPARATOR's input common-mode range. Here: VCM = 0.9 V.
+*   vth_hi    vbias + theta
+*   vth_lo    vbias - theta
+*   fire_up   HIGH when V_Ce >= vth_hi
+*   fire_dn   HIGH when V_Ce <= vth_lo
+*   vdd vss
+*
+* ⚠ MODELLED BEHAVIOURALLY, ON PURPOSE.  The comparator spec is EXTRAORDINARILY LOOSE (it may
+* be wrong 20% of the time — see the header), so a transistor-level design is NOT where the
+* risk is, and not where SPICE effort should go first.  The RESIDUE SUBTRACTION is the tight
+* spec, and THAT is transistor-level above.
+* A StrongARM latch or a simple 5T diff-amp + inverter chain will both be fine here; size it
+* for the sweep rate (1024 elements per absorb sweep), not for precision.
+* -----------------------------------------------------------------------------
+.subckt jug_comparator ve vbias vth_hi vth_lo fire_up fire_dn vdd vss
+Bup fire_up 0 V = 1.8 * (v(ve) >= v(vth_hi))
+Bdn fire_dn 0 V = 1.8 * (v(ve) <= v(vth_lo))
+.ends jug_comparator
+
+
+* =============================================================================
+* Subcircuit: jug_comparator_t — the WINDOW comparator, TRANSISTOR LEVEL
+* =============================================================================
+* Same ports as jug_comparator (drop-in). Two 5T OTAs (one per threshold) + a 2-inverter
+* buffer each. NMOS input pairs — the common mode is 0.9 V, comfortably above their Vth.
+*
+*   fire_up = HIGH when V_Ce >= vth_hi     (OTA_up: in+ = ve,     in- = vth_hi)
+*   fire_dn = HIGH when V_Ce <= vth_lo     (OTA_dn: in+ = vth_lo, in- = ve   )
+*
+* 5T OTA polarity: NMOS pair M1(in+)/M2(in-), PMOS mirror load (M3 diode on M1's drain,
+* M4 on M2's drain = OUT). OUT rises when V(in+) > V(in-). Two inverters then square it to a
+* rail-to-rail digital level (an even count => OUT polarity preserved).
+*
+* ⚠ WHY THIS IS ALLOWED TO BE A CHEAP 5T OTA, NOT A TRIMMED PRECISION COMPARATOR:
+*   the comparator spec is EXTRAORDINARILY LOOSE (header): a x2 threshold mismatch costs 0.76pp,
+*   and a WRONG SIGN 20% of the time costs 0.34pp, because the residue subtraction CONSERVES
+*   CHARGE. The input-referred OFFSET of a modestly-sized 5T OTA (a few mV) is a small fraction
+*   of theta (50 mV) — an order of margin. Size it for the SWEEP RATE (1024 cells/sweep), not
+*   for precision. tb_jug_comparator.spice verifies thresholds, dead-zone, and speed.
+*
+* ★ The TIGHT spec is the residue subtraction (jug_residue, above) and the kT/C noise on Ce.
+*   This block is deliberately the LAST thing built, and the least fussy.
+* vbias is unused here (kept for port compatibility with the behavioural model).
+* -----------------------------------------------------------------------------
+.subckt jug_comparator_t ve vbias vth_hi vth_lo fire_up fire_dn vdd vss
+
+* -- shared tail bias: 5 uA into a diode NMOS sets nbias; each OTA tail mirrors it ----
+* (stand-in for the global bias-current mirror that feeds the whole array.)
+Ibias   vdd nbias DC 5u
+XMNbias nbias nbias vss vss sky130_fd_pr__nfet_01v8 w=2 l=1
+
+* == OTA_up : OUT_u HIGH when ve > vth_hi ==================================
+XMN_tu  ntu   nbias  vss  vss sky130_fd_pr__nfet_01v8 w=2 l=1        ; tail
+XMN_1u  nAu   ve     ntu  vss sky130_fd_pr__nfet_01v8 w=4 l=0.5      ; in+  = ve
+XMN_2u  OUu   vth_hi ntu  vss sky130_fd_pr__nfet_01v8 w=4 l=0.5      ; in-  = vth_hi
+XMP_3u  nAu   nAu    vdd  vdd sky130_fd_pr__pfet_01v8 w=8 l=0.5      ; diode load
+XMP_4u  OUu   nAu    vdd  vdd sky130_fd_pr__pfet_01v8 w=8 l=0.5      ; mirror load -> OUT_u
+* 2-inverter buffer -> fire_up (polarity preserved)
+XMP_iu1 iu1     OUu vdd vdd sky130_fd_pr__pfet_01v8 w=2 l=0.15
+XMN_iu1 iu1     OUu vss vss sky130_fd_pr__nfet_01v8 w=1 l=0.15
+XMP_iu2 fire_up iu1 vdd vdd sky130_fd_pr__pfet_01v8 w=2 l=0.15
+XMN_iu2 fire_up iu1 vss vss sky130_fd_pr__nfet_01v8 w=1 l=0.15
+
+* == OTA_dn : OUT_d HIGH when ve < vth_lo =================================
+XMN_td  ntd   nbias  vss  vss sky130_fd_pr__nfet_01v8 w=2 l=1        ; tail
+XMN_1d  nAd   vth_lo ntd  vss sky130_fd_pr__nfet_01v8 w=4 l=0.5      ; in+  = vth_lo
+XMN_2d  OUd   ve     ntd  vss sky130_fd_pr__nfet_01v8 w=4 l=0.5      ; in-  = ve
+XMP_3d  nAd   nAd    vdd  vdd sky130_fd_pr__pfet_01v8 w=8 l=0.5      ; diode load
+XMP_4d  OUd   nAd    vdd  vdd sky130_fd_pr__pfet_01v8 w=8 l=0.5      ; mirror load -> OUT_d
+XMP_id1 id1     OUd vdd vdd sky130_fd_pr__pfet_01v8 w=2 l=0.15
+XMN_id1 id1     OUd vss vss sky130_fd_pr__nfet_01v8 w=1 l=0.15
+XMP_id2 fire_dn id1 vdd vdd sky130_fd_pr__pfet_01v8 w=2 l=0.15
+XMN_id2 fire_dn id1 vss vss sky130_fd_pr__nfet_01v8 w=1 l=0.15
+
+.ends jug_comparator_t
+
+
+* =============================================================================
+* End of library
+* =============================================================================

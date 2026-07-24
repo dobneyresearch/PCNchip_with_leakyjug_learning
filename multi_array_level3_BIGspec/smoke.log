@@ -1,0 +1,49 @@
+
+========================================================================
+PCN 3-layer EMNIST — BIG topology + THE SPEC  [pcn_bigspec]
+  Architecture: 1152→384→128→256 (24/8/16 chips, OVERLAPPING L3 routing)→clf(26)
+  Stages: P5[E3+E2+E1]×1(c4k)
+  n_settle: 1  boss_h: variable  lr_slow: 1.0  e_clip: 100.0000  leaky_alpha: 0.1  BOSS_LR: 0.0003
+  Ideas:  nlms=off  local_delta=off  clf_refresh=off  avg_bp=off  bp_ema=off  stage_patience=off  stage_rollback=off
+========================================================================
+
+Loading EMNIST split-sign BIG L0 features ...
+  124,800 train / 20,800 test  (26 classes, 1152 split-sign feats)
+  Eval sets: 208 (8/class, reporting) + 1040 (40/class, stage decisions)
+Loading weights ...
+  Loaded L1 weights (24 chips x 3 pages, EMNIST per-chip PCA)
+  Loaded L2 weights (8 chips x 3 pages, EMNIST per-chip PCA)
+  L3 weights: 16 chips × 2 pages (random ortho, seed=2)
+
+Computing GHA baseline (W-only, no E updates) ...
+  GHA baseline (208-eval): 58.65%  [emnist gha-only ref: 64.03%]
+
+████████████████████████████████████████████████████████████████████████
+  STAGE 1/1  —  phase P5 (train E3+E2+E1; frozen: none)  ×1 epochs, chunk 4,000
+
+────────────────────────────────────────────────────────────────────────
+  S1 P5 epoch 1/1
+  Fitting classifier (124,800 samples) ... acc(tr)=60.4%
+  fold_mean: lr/128 per sample → |E|≤3.00e-04 per fold; momentum μ=0.9 → effective step ≈3.00e-03
+  [  128s] S1 P5 ep1  s      1/4000  acc(eval)=58.2%  moves=1  ETA 510946s
+  E vs W (S1 P5 ep1, pre-absorb):  L1 ||E||/||W||=0.000 cos=+0.065  |  L2 ||E||/||W||=0.001 cos=+0.070  |  L3 ||E||/||W||=0.001 cos=+0.010
+  Fitting epoch classifier ... acc(208)=61.54%  acc(1040)=62.21%
+  S1 P5 ep1 complete:  acc(208)=61.54%  acc(1040)=62.21%  moves=4000  [232.6s]
+
+  STAGE 1 (P5) done — best 1040-eval 62.21% (ep1)  — E3+E2+E1 now frozen (unless re-opened by a later stage)
+
+  Final classifier (124,800 train, 20,800 test) ...
+
+========================================================================
+RESULTS: FABLE pooled-ideas sim  (P5×1(c4k))
+  Ideas:  nlms=off  local_delta=off  clf_refresh=off  avg_bp=off  bp_ema=off
+  EMNIST GHA-only baseline (ref)  : 64.03%
+  GHA baseline this run (208)     : 58.65%
+  After training (full test)      : 62.19%
+  Train acc (124,800 samples)   : 63.53%
+  Train–Test gap                  : +1.34 pp
+  Change from GHA baseline        : +3.53 pp
+  Wall time                       : 352.1s
+========================================================================
+
+Log → /home/saul/NtntForClaude/PCNchip_clean/multi_array_level3_BIGspec/results/l3nrm_fable_sm_stg5x1_ns1_bhvar_lr1.0_acc_log.txt

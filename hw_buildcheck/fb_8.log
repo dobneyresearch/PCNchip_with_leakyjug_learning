@@ -1,0 +1,22 @@
+Loading EMNIST split-sign BIG L0 features ...
+  124,800 train / 20,800 test  (26 classes, 1152 split-sign feats)
+  Loaded L1 weights (24 chips x 3 pages, EMNIST per-chip PCA)
+  Loaded L2 weights (8 chips x 3 pages, EMNIST per-chip PCA)
+
+==============================================================================
+BIT-ACCURATE HARDWARE MODEL — BIG (24/8/16 chips)
+  activations : 8-bit ADC at EVERY layer
+  weight cell : 8-bit analog (CODE_MID=132) + 8 SUB-LSB bits
+                => 16-bit digital master, 5 master-LSB per write
+                => the analog cell moves 1 LSB every ~51 folds
+  delta       : 6-bit signed + power-of-2 AGC (a SHIFT)
+  E accum     : 20-bit saturating
+  velocity    : 20-bit,  mu = 1-2^-3 = 0.875
+  leaky       : alpha = 2^-3 = 0.125  (a SHIFT)
+  ADC gain    : per-layer shifts [3, 6, 6] (>>3, >>6, >>6)
+==============================================================================
+
+  ep 1  test=68.62%  (best 68.62%)  [162s]
+  ep 2  test=71.85%  (best 71.85%)  [314s]
+  ep 3  test=74.06%  (best 74.06%)  [461s]
+  ep 4  test=74.08%  (best 74.08%)  [598s]

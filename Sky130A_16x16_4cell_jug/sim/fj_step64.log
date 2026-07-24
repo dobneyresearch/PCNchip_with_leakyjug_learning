@@ -1,0 +1,26 @@
+Loading EMNIST split-sign BIG L0 features ...
+  124,800 train / 20,800 test  (26 classes, 1152 split-sign feats)
+  Loaded L1 weights (24 chips x 3 pages, EMNIST per-chip PCA)
+  Loaded L2 weights (8 chips x 3 pages, EMNIST per-chip PCA)
+
+==============================================================================
+BIT-ACCURATE HARDWARE MODEL — BIG (24/8/16 chips)
+  *** FLOAT REFERENCE (control) ***
+==============================================================================
+
+  ** FLOAT JUG **  weight is a FLOAT; one fire moves it 0.01562 (= 1.00 code equivalents)
+  ** LEAKY JUG **  E leaks (the leak IS momentum); a threshold crossing fires
+                   a whole +-1 cell-LSB.  frac_bits FORCED to 0:
+                   NO digital master, NO velocity register, NO per-synapse SRAM.
+     leak       : NONE (pure sigma-delta integrator — the CONTROL)
+     theta      : 8.0 x the per-fold rms of |E|  (per layer)
+  jug theta   : [2574805, 101981, 3026]  (per layer, fixed at calibration)
+  ep 1  test=66.20%  (best 66.20%)  fire= 0.33%/fold  FROZEN= 93.1%  [126s]
+  ep 2  test=69.30%  (best 69.30%)  fire= 0.31%/fold  FROZEN= 91.1%  [224s]
+  ep 3  test=70.91%  (best 70.91%)  fire= 0.29%/fold  FROZEN= 89.7%  [337s]
+  ep 4  test=72.08%  (best 72.08%)  fire= 0.28%/fold  FROZEN= 88.5%  [439s]
+  ep 5  test=72.89%  (best 72.89%)  fire= 0.27%/fold  FROZEN= 87.5%  [520s]
+  ep 6  test=73.00%  (best 73.00%)  fire= 0.26%/fold  FROZEN= 86.6%  [584s]
+
+  >>> FLOAT CEILING : BEST = 73.00%   (float spec on BIG = 82.50%)
+

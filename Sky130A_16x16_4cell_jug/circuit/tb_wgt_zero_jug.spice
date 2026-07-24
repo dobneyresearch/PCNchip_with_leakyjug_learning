@@ -1,0 +1,72 @@
+* =============================================================================
+* tb_wgt_zero_jug — a **DIRECTIONAL** WGT_ZERO test.
+*
+* ⚠⚠⚠ WHY THIS TESTBENCH EXISTS
+* The FABLE test (tb_wgt_zero_emx.spice) checked:
+*
+*       sflip = I_diff(code128) * I_diff(code136)   and PASSED if sflip < 0
+*
+* **THAT IS A PRODUCT.** It confirms the two codes STRADDLE a zero. It is satisfied by a CORRECT
+* response and by an **INVERTED** one, equally. It never checks WHICH SIDE GETS WHICH SIGN.
+*
+* And the weight WAS inverted. gm(V_w) peaked at 0.90 V and FELL above it; WGT_ZERO sat ON the
+* peak; codes 119..192 — THE ENTIRE POSITIVE WEIGHT RANGE — were dead or INVERTED. The test
+* passed anyway, for months. See THE_WEIGHT_IS_NOT_LINEAR.md.
+*
+*   ★ "IS THERE A SIGN FLIP" IS NOT THE TEST "IS THE SIGN RIGHT."
+*   ★ CHARACTERISE THE RANGE, NOT THE OPERATING POINT.
+*
+* THIS TEST INSTEAD REQUIRES:
+*   D1. I_diff MONOTONICALLY INCREASES with code, across the FULL range (71..192) — not just in a
+*       +-4-code window around the zero.
+*   D2. I_diff(code) > 0 for code > WGT_ZERO, and < 0 for code < WGT_ZERO.  DIRECTIONAL.
+*   D3. |I_diff(WGT_ZERO)| ~ 0.
+*
+* Run: ngspice -b tb_wgt_zero_jug.spice && python3 analyse_wgt_zero.py
+* =============================================================================
+.title tb_wgt_zero_jug  DIRECTIONAL zero-point + monotonicity, FULL range
+
+.include 'mac_cell_jug.spice'
+.lib "/home/saul/.volare/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.tech/ngspice/sky130.lib.spice" tt
+
+.param VCM_val = 0.9
+.param VW_ZERO = 0.8229      ; code 117 — RE-DERIVED for MN3_w=2 (was 132 @ 0.927 V)
+.param XDIFF   = 0.050       ; the differential input used to probe the weight
+
+Vvdd vdd 0 DC 1.8
+Vvss vss 0 DC 0
+Vinn inn 0 DC {VCM_val}
+Vinp inp 0 DC {VCM_val + XDIFF}
+Vve  ve  0 DC 0.9
+Vwe_w we_w 0 DC 0
+Vwe_e we_e 0 DC 0
+Rb1 iw_w 0 1000meg
+Rb2 iw_e 0 1000meg
+
+* DUT: weight swept across the FULL code range
+Vvw  vw  0  DC {VW_ZERO}
+Xdut iout inp inn vw iw_w we_w ve iw_e we_e vdd vss mac_cell_jug
+Rl1 iout 0 100000
+
+* REFERENCE leg, pinned at WGT_ZERO. The weight is the DIFFERENCE against this.
+Vvwr vwr 0 DC {VW_ZERO}
+Vinpr inpr 0 DC {VCM_val + XDIFF}
+Vinnr innr 0 DC {VCM_val}
+Vver ver 0 DC 0.9
+Vwe_wr we_wr 0 DC 0
+Vwe_er we_er 0 DC 0
+Rb3 iw_wr 0 1000meg
+Rb4 iw_er 0 1000meg
+Xref ioutr inpr innr vwr iw_wr we_wr ver iw_er we_er vdd vss mac_cell_jug
+Rl2 ioutr 0 100000
+
+.control
+  set noaskquit
+  set wr_vecnames
+  set wr_singlescale
+  * FULL code range: 71..192  =>  V_w = 0.500 .. 1.350, one code = 7.02 mV
+  dc Vvw 0.500 1.350 0.00702
+  wrdata output/wgt_zero_jug.csv v(iout) v(ioutr)
+  quit
+.endc
+.end

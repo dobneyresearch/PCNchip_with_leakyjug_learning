@@ -1,0 +1,36 @@
+Loading EMNIST split-sign BIG L0 features ...
+  124,800 train / 20,800 test  (26 classes, 1152 split-sign feats)
+  Loaded L1 weights (24 chips x 3 pages, EMNIST per-chip PCA)
+  Loaded L2 weights (8 chips x 3 pages, EMNIST per-chip PCA)
+
+==============================================================================
+BIT-ACCURATE HARDWARE MODEL — BIG (24/8/16 chips)
+  activations : 8-bit ADC at EVERY layer
+  weight cell : 8-bit analog (CODE_MID=132) + 0 SUB-LSB bits
+                => 8-bit digital master, 1 master-LSB per write
+                => the analog cell moves 1 LSB every ~1 folds
+  delta       : 6-bit signed + power-of-2 AGC (a SHIFT)
+  E accum     : 20-bit saturating
+  velocity    : 12-bit,  mu = 1-2^-3 = 0.875
+  leaky       : alpha = 2^-3 = 0.125  (a SHIFT)
+  AGC ref     : rms
+  ADC gain    : per-layer shifts [3, 6, 6] (>>3, >>6, >>6)
+==============================================================================
+
+  ** PARASITIC LEAK **  tau median 1000 folds, spread x10.0  => tau p5..p95 = 23..45638 folds
+  ** THRESHOLD MISMATCH **  log-normal x2.0 (= a random per-synapse learning rate)
+  ** LEAKY JUG **  E leaks (the leak IS momentum); a threshold crossing fires
+                   a whole +-1 cell-LSB.  frac_bits FORCED to 0:
+                   NO digital master, NO velocity register, NO per-synapse SRAM.
+     leak       : NONE (pure sigma-delta integrator — the CONTROL)
+     theta      : 8.0 x the per-fold rms of |E|  (per layer)
+  jug theta   : [1571, 8395, 8252]  (per layer, fixed at calibration)
+  ep 1  test=73.03%  (best 73.03%)  fire= 1.50%/fold  FROZEN= 70.6%  [239s]
+  ep 2  test=76.44%  (best 76.44%)  fire= 1.34%/fold  FROZEN= 62.8%  [430s]
+  ep 3  test=78.63%  (best 78.63%)  fire= 1.36%/fold  FROZEN= 57.3%  [615s]
+  ep 4  test=79.92%  (best 79.92%)  fire= 1.42%/fold  FROZEN= 53.1%  [787s]
+  ep 5  test=80.69%  (best 80.69%)  fire= 1.46%/fold  FROZEN= 49.8%  [972s]
+  ep 6  test=81.06%  (best 81.06%)  fire= 1.40%/fold  FROZEN= 48.1%  [1151s]
+
+  >>> JUG theta=8.0 leak=pure act=8 e_fwd=0.0 agc=rms code=linear : BEST = 81.06%   (float spec on BIG = 82.50%)
+

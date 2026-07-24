@@ -1,0 +1,158 @@
+* =============================================================================
+* tb_jug_fire — THE CRITICAL TEST: does the fire SUBTRACT theta, or DISCHARGE Ce?
+*
+* ★★★ THIS IS THE ONE THING IN THE WHOLE DESIGN THAT MUST BE EXACT. ★★★
+*
+* The comparator may be wrong 20% of the time and it costs 0.34pp.  Ce may mismatch 10x and
+* it costs 0.58pp.  But the RESIDUE SUBTRACTION cannot be sloppy: discharging Ce (what the
+* OLD absorb did — DESIGN_DEPRECATED §5 step 4) throws away exactly the sub-threshold charge
+* the mechanism exists to accumulate.
+*
+*   ** The sigma-delta can forgive a bad DECISION. It cannot forgive a LIE ABOUT HOW MUCH
+*      CHARGE IS THERE. **
+*
+* THE TESTS
+* ---------
+* T1. Ramp Ce past +theta. The comparator must fire.
+* T2. ★ ON FIRE, V_Ce MUST DROP BY EXACTLY theta AND KEEP THE REMAINDER.
+*        If Ce is at V_bias + 1.6*theta when it fires, it must land at V_bias + 0.6*theta.
+*        ** IT MUST **NOT** LAND AT V_bias. ** That is the old (lossy) absorb, and it destroys
+*        the mechanism.
+* T3. ★ CHARGE CONSERVATION over a BURST. Drive Ce to 3*theta and let it fire on successive
+*        sweeps. It must fire THREE times and end with the residue intact — "a burst becomes
+*        a TRAIN, and no charge is lost."
+* T4. The subtraction must be INDEPENDENT of V_Ce (a fixed CHARGE, not a fixed fraction).
+*        Naive charge-sharing would give dV proportional to (V_ref - V_Ce). Bottom-plate
+*        switching must not.
+*
+* Run:  ngspice -b tb_jug_fire.spice
+* =============================================================================
+
+.title tb_jug_fire  the residue subtraction — the one tight spec
+
+.include 'jug_compare.spice'
+.lib "/home/saul/.volare/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.tech/ngspice/sky130.lib.spice" tt
+
+.param VDD_val  = 1.8
+.param VBIAS    = 0.9        ; V_bias_e — FREE now that MN3_e is gone (was pinned to 0.65 V)
+.param CE_val   = 100e-15
+.param THETA    = 0.050      ; (C_fb/Ce)*VREF = (5.6/100)*0.9 = 50 mV.  A CAPACITOR RATIO.
+
+Vvdd  vdd  0  DC {VDD_val}
+Vvss  vss  0  DC 0
+Vref  vref 0  DC 0.9
+Vbias vbias 0 DC {VBIAS}
+Vthi  vth_hi 0 DC {VBIAS + THETA}
+Vtlo  vth_lo 0 DC {VBIAS - THETA}
+
+* ── The jug capacitor ───────────────────────────────────────────────────────
+Ce  ve  0  {CE_val}
+.ic v(ve) = {VBIAS}
+
+* ── The inject current: charges Ce, exactly as e_inject would ───────────────
+* 8 nA for 1 us = 8 fC = 80 mV on 100 fF = 1.6 * theta.
+* So Ce crosses theta and OVERSHOOTS to 1.6*theta before the sweep gets to it —
+* which is the realistic case (the comparator is SWEPT, not continuous).
+* 30 nA for 1 us = 30 fC = 300 mV on 100 fF ~ 4 theta_subtract.
+* Ce OVERSHOOTS far past threshold before the sweep reaches it — the realistic case,
+* since the comparator is SWEPT, not continuous. It must then fire on SUCCESSIVE
+* sweeps until it drops below threshold: ** A BURST BECOMES A TRAIN. **
+Iinj  0  ve  PWL(0 0  1n 30n  1u 30n  1.001u 0)
+
+* ── The comparator (behavioural — the spec is LOOSE, see jug_compare.spice) ──
+Xcmp ve vbias vth_hi vth_lo cmp_up cmp_dn vdd vss jug_comparator
+
+* ── Current-mirror bias for the theta subtraction ──────────────────────────
+* I_theta = 500 nA.  Q_theta = I*t = 500 nA * 10 ns = 5 fC = 50 mV on Ce = 100 fF.
+* ★ TRIMMED. The CASCODE fixes the charge packet's V_Ce INDEPENDENCE (step constant to 3%,
+* was 8%); the ABSOLUTE value is set by trimming this bias. 500 nA gave a 96 mV step, so
+* 500 * 50/96 = 260 nA lands on theta = 50 mV.  Q = I*t = 260 nA * 10 ns = 2.6 fC.
+Ibias_n  vdd  vbn  DC 480n      ; push I_theta INTO the diode-connected NMOS
+XMNbias  vbn  vbn  vss  vss  sky130_fd_pr__nfet_01v8 w=2 l=1
+Ibias_p  vbp  vss  DC 480n      ; pull I_theta OUT of the diode-connected PMOS
+XMPbias  vbp  vbp  vdd  vdd  sky130_fd_pr__pfet_01v8 w=4 l=1
+* ★ CASCODE biases. Hold the mirror devices' drains at a FIXED voltage so the mirror actually
+* mirrors (uncascoded it delivered 724 nA of a 500 nA target — a 45% gain error from CLM).
+Vcn  vcn  0  DC 0.95
+Vcp  vcp  0  DC 0.85
+
+* ── THE SWEEP + THE ONE-SHOT ───────────────────────────────────────────────
+* ** THE SWEEP PERIOD IS A FREE REFRACTORY PERIOD. ** absorb_ctrl visits each cell once per
+* sweep, so a cell can fire AT MOST ONCE per sweep. That single-fire limit is THE DESIGN, not
+* a sim shortcut. (A per-cell comparator would fire repeatedly on a crossing and RUN AWAY:
+* measured 271%/fold, network collapses to 18%.)
+Vsweep sweep 0 PULSE(0 1.8 2u 100p 100p 100n 2u)
+
+* ⚠⚠ THE ONE-SHOT IS PART OF THE SPEC.  Q = I * t, so the PULSE WIDTH sets the charge.
+* Gating the current source with the full 100 ns sweep strobe would remove 100x too much.
+* absorb_ctrl must emit a FIXED-WIDTH (10 ns) fire pulse on the sweep edge.
+Vshot shot 0 PULSE(0 1.8 2u 50p 50p 10n 2u)
+
+Bfup fire_up 0 V = 1.8 * (v(cmp_up) > 0.9) * (v(shot) > 0.9)
+Bfdn fire_dn 0 V = 1.8 * (v(cmp_dn) > 0.9) * (v(shot) > 0.9)
+
+* ── The residue subtraction (transistor level — THE TIGHT SPEC) ────────────
+* ★ the steering DUMP node — tie to V_bias_e so the pair sees no large differential
+Vdump vdump 0 DC {VBIAS}
+Xres ve vdump fire_up fire_dn vbn vbp vcn vcp vdd vss jug_residue
+
+* ⚠ the timestep MUST be << the one-shot width, or the charge packet is not resolved.
+* (A 1 ns step against a 1 ns pulse gave 0.97 fC instead of 5 fC — a simulation artefact,
+*  not a circuit one. Caught the hard way.)
+.tran 100p 12u uic
+
+.control
+  set noaskquit
+  run
+  echo "=============================================================================="
+  echo "  tb_jug_fire — DOES THE FIRE SUBTRACT theta, OR DISCHARGE Ce?"
+  echo "=============================================================================="
+
+  * V_Ce just BEFORE the first sweep, and just AFTER it
+  meas tran v_before find v(ve) at=1.99u
+  meas tran v_after  find v(ve) at=2.2u
+  let dv      = v_before - v_after
+  let resid   = v_after - 0.9
+  let theta_v = 0.050
+
+  echo " "
+  echo "T2 — ★ THE CRITICAL TEST: SUBTRACT, DO NOT DISCHARGE"
+  print v_before
+  echo "   ^ V_Ce before the fire (V).  V_bias = 0.9, so the excess is ~1.6*theta = 80 mV."
+  print v_after
+  echo "   ^ V_Ce AFTER the fire."
+  print dv
+  echo "   ^ the STEP.  MUST equal theta = 0.050 V."
+  print resid
+  echo "   ^ ** THE RESIDUE (V_Ce - V_bias) AFTER the fire. **"
+  echo "     MUST be ~0.030 V (= 80 mV - 50 mV).   ** IT MUST NOT BE ZERO. **"
+  echo "     ZERO would mean Ce was DISCHARGED -> the old, LOSSY absorb -> mechanism destroyed."
+
+  echo " "
+  echo "T3 — a BURST becomes a TRAIN: successive sweeps, charge conserved"
+  meas tran v_s2 find v(ve) at=4.2u
+  meas tran v_s3 find v(ve) at=6.2u
+  meas tran v_s4 find v(ve) at=8.2u
+  meas tran v_s5 find v(ve) at=10.2u
+  print v_s2 v_s3 v_s4 v_s5
+  let d1 = v_before - v_after
+  let d2 = v_after  - v_s2
+  let d3 = v_s2     - v_s3
+  let d4 = v_s3     - v_s4
+  print d1 d2 d3 d4
+  echo "   ^ ★ T4: the STEP must be the SAME each time (a fixed CHARGE, independent of V_Ce)."
+  echo "     Naive charge-SHARING would give a step proportional to (Vref - V_Ce) — shrinking."
+  echo "     A pulsed CURRENT SOURCE gives Q = I*t. CONSTANT. That is what a sigma-delta needs."
+  echo "   ^ each subsequent sweep must remove ANOTHER theta, until V_Ce < threshold."
+  echo "     'Delay the boost; never drop it.'"
+
+  * write the waveform for inspection
+  set wr_vecnames
+  set wr_singlescale
+  wrdata output/jug_fire.csv v(ve) v(fire_up) v(cmp_up) v(shot)
+  echo " "
+  echo "=============================================================================="
+  quit
+.endc
+
+.end
