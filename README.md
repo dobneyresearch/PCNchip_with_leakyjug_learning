@@ -5,6 +5,10 @@
 Design files, RTL, SPICE netlists and simulation scripts for the **W&E** paper (Part II of this
 study). The paper itself is in [`paper/`](paper/).
 
+Part 1: Basic cell design in analog hardware: https://github.com/dobneyresearch/PredictiveCodingNetworks_AnalogVLSIdesign
+
+Part 3: Modular upgrade to the design applied to SNN speech and EEG data achieved through multiple use of leaky accumulators - https://github.com/dobneyresearch/PCNchip_for_SNN_GSC_EEG
+
 > **All results are pre-silicon.** The evidence here is Python behavioural simulation, Sky130A SPICE,
 > and a bit-faithful RTL implementation. Nothing has been fabricated.
 
